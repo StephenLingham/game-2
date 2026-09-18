@@ -75,5 +75,5 @@ func run_tests() -> void:
 	game.hide_inventory_tooltip()
 	assert(not game.inventory_tooltip.visible)
 
-	print("RECTFALL_SMOKE_TEST: PASS")
+	print("SMOKE_TEST: PASS")
 	quit(0)

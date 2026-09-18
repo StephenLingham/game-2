@@ -8,7 +8,7 @@ enum Mode { LOBBY, RUNNING, RUN_OVER }
 
 const MAX_LEVEL := 1000
 const MAX_INVENTORY := 50
-const SAVE_PATH := "user://rectfall_save.cfg"
+const SAVE_PATH := "user://save.cfg"
 const TYPES := ["Sword", "Breastplate", "Leggings", "Gauntlets", "Helmet", "Ring", "Amulet"]
 const ARMOUR_TYPES := ["Breastplate", "Leggings", "Gauntlets", "Helmet"]
 const RARITIES := ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
@@ -359,11 +359,9 @@ func build_lobby() -> Control:
 	v.size = Vector2(466, 510)
 	v.add_theme_constant_override("separation", 14)
 	box.add_child(v)
-	var game_title := title_label("RECTFALL", 52)
-	game_title.add_theme_color_override("font_color", Color("70f0d2"))
-	v.add_child(game_title)
-	var subtitle := title_label("1000 BOSSES // ONE LIFE", 17)
+	var subtitle := title_label("1000 BOSSES // ONE LIFE", 28)
 	subtitle.add_theme_color_override("font_color", Color("93a4bd"))
+	subtitle.custom_minimum_size = Vector2(0, 72)
 	v.add_child(subtitle)
 	lobby_message = title_label("", 18)
 	lobby_message.custom_minimum_size = Vector2(0, 78)
@@ -603,7 +601,7 @@ func start_run() -> void:
 
 func spawn_level() -> void:
 	if level > MAX_LEVEL:
-		end_run("YOU CONQUERED RECTFALL", "All 1000 bosses have fallen. Your build is eternal.")
+		end_run("ALL BOSSES DEFEATED", "All 1000 bosses have fallen. Your build is eternal.")
 		return
 	player_max_hp = 100.0
 	player_hp = player_max_hp

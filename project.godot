@@ -1,6 +1,6 @@
 [application]
 
-config/name="Rectfall: 1000 Bosses"
+config/name=""
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.5")
 
@@ -17,4 +17,3 @@ window/stretch/mode="canvas_items"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 environment/defaults/default_clear_color=Color(0.035, 0.043, 0.067, 1)
-

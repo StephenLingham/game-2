@@ -1,8 +1,8 @@
-# Rectfall project notes
+# Project notes
 
 ## Non-negotiable visual language
 
-Rectfall's art style is **everything is a rectangle**.
+The game's art style is **everything is a rectangle**.
 
 - Characters, equipment silhouettes, environments, scenery, UI decoration, attacks, animation accents, particles, and future visual effects must be built from rectangles.
 - Do not add raster images, imported textures, circles, polygons, curved primitives, or conventional illustrated sprites.
