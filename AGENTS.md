@@ -1,0 +1,24 @@
+# Rectfall project notes
+
+## Non-negotiable visual language
+
+Rectfall's art style is **everything is a rectangle**.
+
+- Characters, equipment silhouettes, environments, scenery, UI decoration, attacks, animation accents, particles, and future visual effects must be built from rectangles.
+- Do not add raster images, imported textures, circles, polygons, curved primitives, or conventional illustrated sprites.
+- Animation and particle effects are encouraged, provided every visible particle or animated component is rectangular.
+- Depth and visual richness should come from layered rectangles, careful color palettes, transparency, scale, motion, lighting bands, and composition.
+- UI controls should keep square corners so the interface belongs to the same visual system.
+
+## Gameplay/UI conventions
+
+- Boss names are intentionally not displayed above bosses during combat.
+- Inventory items use a grid, hover details, and rarity color coding.
+- Equipped gear is presented on a rectangular character outline at its anatomical slot.
+- Escape during a run opens a pause menu; Save & Exit must preserve the exact run level, health values, timer, combat clocks, and selected background.
+- Every level chooses one of the rectangle-built environment themes: forest, waterfall, desert, space, or lava.
+
+## Verification
+
+- Run the Godot smoke test after gameplay changes.
+- Inspect new visual code for non-rectangle drawing calls and texture/image dependencies.
