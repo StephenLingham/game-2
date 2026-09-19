@@ -289,9 +289,11 @@ func build_hud() -> Control:
 	timer_fill = panel_box(Color("55d6be"), Vector2.ZERO, Vector2(420, 12))
 	timer_back.add_child(timer_fill)
 	stats_label = Label.new()
-	stats_label.position = Vector2(895, 12)
-	stats_label.size = Vector2(190, 64)
+	stats_label.position = Vector2(865, 3)
+	stats_label.size = Vector2(220, 84)
 	stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	stats_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	stats_label.add_theme_font_size_override("font_size", 16)
 	top.add_child(stats_label)
 
 	var inv_btn := Button.new()
@@ -523,7 +525,7 @@ func build_inventory() -> Control:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	inventory_screen.add_child(scroll)
 	inventory_grid = GridContainer.new()
-	inventory_grid.columns = 5
+	inventory_grid.columns = 4
 	inventory_grid.custom_minimum_size = Vector2(675, 0)
 	inventory_grid.add_theme_constant_override("h_separation", 8)
 	inventory_grid.add_theme_constant_override("v_separation", 8)
@@ -943,7 +945,7 @@ func update_hud() -> void:
 	boss_hp_fill.size.x = 340.0 * clampf(boss_hp / boss_max_hp, 0.0, 1.0)
 	player_hp_label.text = "%d / %d" % [ceili(player_hp), ceili(player_max_hp)]
 	boss_hp_label.text = "%d / %d" % [ceili(boss_hp), ceili(boss_max_hp)]
-	stats_label.text = "Damage  %d\nArmour  %d   Luck  %d" % [get_damage(), get_armour(), get_luck()]
+	stats_label.text = "Damage  %d\nArmour  %d\nLuck  %d" % [get_damage(), get_armour(), get_luck()]
 
 func spawn_damage_number(amount: int, pos: Vector2, tint: Color) -> void:
 	var number = DamageNumberScript.new()
@@ -1106,7 +1108,7 @@ func rebuild_inventory() -> void:
 			btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
 			btn.add_theme_color_override("font_color", rarity_text_color(item.rarity))
 			btn.add_theme_font_size_override("font_size", 12)
-			btn.custom_minimum_size = Vector2(127, 127)
+			btn.custom_minimum_size = Vector2(162, 162)
 			btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			apply_rarity_style(btn, item.rarity, is_item_equipped(int(item.id)))
 			btn.pressed.connect(select_item.bind(int(item.id)))
