@@ -6,30 +6,48 @@ const DamageNumberScript = preload("res://scripts/damage_number.gd")
 
 enum Mode { LOBBY, RUNNING, RUN_OVER }
 
-const MAX_LEVEL := 1000
-const MAX_INVENTORY := 50
+const MAX_LEVEL := 118
+const MAX_INVENTORY := 200
 const SAVE_PATH := "user://save.cfg"
 const TYPES := ["Sword", "Breastplate", "Leggings", "Gauntlets", "Helmet", "Ring", "Amulet"]
 const ARMOUR_TYPES := ["Breastplate", "Leggings", "Gauntlets", "Helmet"]
 const RARITIES := ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
 const RARITY_MULT := {"Common": 1, "Uncommon": 2, "Rare": 4, "Epic": 8, "Legendary": 16}
 const RARITY_COLOR := {
-	"Common": Color("f4f5f7"), "Uncommon": Color("66e17a"),
+	"Common": Color("3f5565"), "Uncommon": Color("20a947"),
 	"Rare": Color("55a7ff"), "Epic": Color("bd72ff"), "Legendary": Color("ff9f32")
 }
 const CRATE_COST := {"Common": 5, "Uncommon": 16, "Rare": 48, "Epic": 140, "Legendary": 400}
-const BOSS_NAMES := ["BLOCK WARDEN", "THE RED FRAME", "NULL KNIGHT", "GRID EATER", "SQUARE ONE", "THE LAST BRICK"]
 const BOSS_COLORS := [Color("ef476f"), Color("ff6b35"), Color("8b5cf6"), Color("3b82f6"), Color("d946ef"), Color("f43f5e")]
-const BACKGROUND_NAMES := ["ANCIENT FOREST", "CRYSTAL FALLS", "GOLDEN DESERT", "DEEP SPACE", "LAVA FORGE"]
+const BACKGROUND_NAMES := ["Sunny Meadow"]
+const ELEMENTS := [
+	"Hydrogen", "Helium", "Lithium", "Beryllium", "Boron", "Carbon", "Nitrogen", "Oxygen", "Fluorine", "Neon",
+	"Sodium", "Magnesium", "Aluminium", "Silicon", "Phosphorus", "Sulfur", "Chlorine", "Argon", "Potassium", "Calcium",
+	"Scandium", "Titanium", "Vanadium", "Chromium", "Manganese", "Iron", "Cobalt", "Nickel", "Copper", "Zinc",
+	"Gallium", "Germanium", "Arsenic", "Selenium", "Bromine", "Krypton", "Rubidium", "Strontium", "Yttrium", "Zirconium",
+	"Niobium", "Molybdenum", "Technetium", "Ruthenium", "Rhodium", "Palladium", "Silver", "Cadmium", "Indium", "Tin",
+	"Antimony", "Tellurium", "Iodine", "Xenon", "Caesium", "Barium", "Lanthanum", "Cerium", "Praseodymium", "Neodymium",
+	"Promethium", "Samarium", "Europium", "Gadolinium", "Terbium", "Dysprosium", "Holmium", "Erbium", "Thulium", "Ytterbium",
+	"Lutetium", "Hafnium", "Tantalum", "Tungsten", "Rhenium", "Osmium", "Iridium", "Platinum", "Gold", "Mercury",
+	"Thallium", "Lead", "Bismuth", "Polonium", "Astatine", "Radon", "Francium", "Radium", "Actinium", "Thorium",
+	"Protactinium", "Uranium", "Neptunium", "Plutonium", "Americium", "Curium", "Berkelium", "Californium", "Einsteinium", "Fermium",
+	"Mendelevium", "Nobelium", "Lawrencium", "Rutherfordium", "Dubnium", "Seaborgium",
+	"Bohrium", "Hassium", "Meitnerium", "Darmstadtium", "Roentgenium", "Copernicium",
+	"Nihonium", "Flerovium", "Moscovium", "Livermorium", "Tennessine", "Oganesson",
+]
 
 var mode := Mode.LOBBY
 var level := 1
 var highest_level := 1
+var highest_level_defeated := 0
+var most_damage_one_hit := 0
 var gold := 0
 var inventory: Array[Dictionary] = []
 var equipped := {}
 var next_item_id := 1
 var selected_item_id := -1
+var inventory_type_filter := "All"
+var inventory_rarity_filter := "All"
 
 var player_hp := 100.0
 var player_max_hp := 100.0
@@ -51,6 +69,8 @@ var boss
 var ui: CanvasLayer
 var hud: Control
 var lobby: Control
+var stats_screen: Control
+var reset_confirm_screen: Control
 var inventory_screen: Control
 var shop_screen: Control
 var overlay: Control
@@ -64,19 +84,27 @@ var boss_hp_fill: ColorRect
 var stats_label: Label
 var inventory_count_label: Label
 var toast_label: Label
-var lobby_message: Label
+var item_drop_popup: Control
+var item_drop_label: Label
+var item_drop_tween: Tween
 var gold_labels: Array[Label] = []
 var inventory_grid: GridContainer
+var inventory_type_filter_button: Button
+var inventory_rarity_filter_button: Button
 var item_details: VBoxContainer
 var equipment_panel: Control
 var inventory_tooltip: ColorRect
 var inventory_tooltip_label: Label
+var inventory_compare_label: Label
 var shop_crates: VBoxContainer
 var overlay_title: Label
 var overlay_body: Label
 var overlay_button: Button
 var pause_screen: Control
+var pause_title_label: Label
 var resume_run_button: Button
+var exit_game_button: Button
+var lifetime_stats_label: Label
 
 func _ready() -> void:
 	randomize()
@@ -104,151 +132,90 @@ func _ready() -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	match current_background:
-		0: draw_forest_background()
-		1: draw_waterfall_background()
-		2: draw_desert_background()
-		3: draw_space_background()
-		_: draw_lava_background()
+	draw_sunny_meadow_background()
 
 func draw_gradient(top: Color, bottom: Color, height := 720, steps := 24) -> void:
 	var band_height := float(height) / float(steps)
 	for i in range(steps):
 		draw_rect(Rect2(0, i * band_height, 1280, band_height + 1), top.lerp(bottom, float(i) / float(steps - 1)))
 
-func draw_forest_background() -> void:
-	draw_gradient(Color("071d22"), Color("183a2b"))
-	for i in range(9):
-		var shaft_x := 70 + i * 158
-		draw_rect(Rect2(shaft_x, 65, 28, 470), Color(0.48, 0.95, 0.69, 0.045 + (i % 3) * 0.018))
-	for i in range(18):
-		var x := float(i * 76 - 35)
-		var trunk_w := float(24 + (i * 11) % 32)
-		var trunk_h := float(260 + (i * 37) % 180)
-		draw_rect(Rect2(x, 555 - trunk_h, trunk_w, trunk_h), Color("193d31"))
-		draw_rect(Rect2(x + 7, 555 - trunk_h, 7, trunk_h), Color("2c6650"))
-		for j in range(5):
-			var leaf_x := x - 48 + ((j * 31 + i * 17) % 72)
-			var leaf_y := 95 + ((j * 47 + i * 29) % 220)
-			var leaf_color := Color("245d45") if (i + j) % 2 == 0 else Color("337d55")
-			draw_rect(Rect2(leaf_x, leaf_y, 86 + (j % 2) * 30, 42 + (i % 3) * 11), leaf_color)
-	for i in range(24):
-		var moss_x := float((i * 59 + 23) % 1280)
-		draw_rect(Rect2(moss_x, 520 - (i % 4) * 9, 54, 18), Color(0.33, 0.86, 0.48, 0.34))
-	draw_rect(Rect2(0, 548, 1280, 172), Color("10291f"))
-	draw_rect(Rect2(0, 548, 1280, 9), Color("55c879"))
+func draw_sunny_meadow_background() -> void:
+	draw_gradient(Color("55c8ff"), Color("b9ecff"), 555, 20)
+	draw_rect(Rect2(1020, 82, 112, 112), Color("ffe45c"))
+	draw_rect(Rect2(1040, 102, 72, 72), Color("fff29b"))
+
+	# Every tree is assembled from rectangular trunks and blocky clusters of leaves.
+	var trees := [
+		{"x": 70.0, "h": 190.0, "w": 34.0, "shape": 0},
+		{"x": 190.0, "h": 280.0, "w": 42.0, "shape": 1},
+		{"x": 1080.0, "h": 235.0, "w": 38.0, "shape": 2},
+		{"x": 1190.0, "h": 320.0, "w": 48.0, "shape": 1},
+	]
+	for tree in trees:
+		var trunk_x: float = tree.x
+		var trunk_h: float = tree.h
+		var trunk_w: float = tree.w
+		var canopy_y := 548.0 - trunk_h
+		draw_rect(Rect2(trunk_x, canopy_y + 82, trunk_w, trunk_h - 82), Color("a8642e"))
+		draw_rect(Rect2(trunk_x + 8, canopy_y + 82, 9, trunk_h - 82), Color("d58a3d"))
+		match int(tree.shape):
+			0:
+				draw_rect(Rect2(trunk_x - 42, canopy_y + 34, trunk_w + 84, 92), Color("31d85a"))
+				draw_rect(Rect2(trunk_x - 22, canopy_y, trunk_w + 44, 50), Color("63ed72"))
+			1:
+				draw_rect(Rect2(trunk_x - 62, canopy_y + 56, trunk_w + 124, 68), Color("25c954"))
+				draw_rect(Rect2(trunk_x - 40, canopy_y + 18, trunk_w + 80, 72), Color("4be46a"))
+				draw_rect(Rect2(trunk_x - 16, canopy_y - 18, trunk_w + 32, 52), Color("79f184"))
+			_:
+				draw_rect(Rect2(trunk_x - 54, canopy_y + 44, trunk_w + 108, 86), Color("22c95a"))
+				draw_rect(Rect2(trunk_x - 28, canopy_y + 8, trunk_w + 56, 78), Color("58e875"))
+				draw_rect(Rect2(trunk_x + 5, canopy_y - 22, trunk_w + 22, 52), Color("8af58c"))
+
+	draw_rect(Rect2(0, 548, 1280, 172), Color("39d353"))
+	draw_rect(Rect2(0, 548, 1280, 14), Color("7cf36c"))
 	for i in range(26):
-		draw_rect(Rect2(i * 51, 582 + (i % 4) * 27, 31, 8), Color("2c5b3e"))
-
-func draw_waterfall_background() -> void:
-	draw_gradient(Color("071a2c"), Color("124a59"))
-	draw_rect(Rect2(0, 95, 385, 470), Color("172f3e"))
-	draw_rect(Rect2(895, 95, 385, 470), Color("172f3e"))
-	for i in range(8):
-		draw_rect(Rect2(i * 49, 110 + (i % 3) * 54, 42, 310), Color("294c58"))
-		draw_rect(Rect2(900 + i * 49, 95 + ((i + 1) % 3) * 52, 42, 330), Color("294c58"))
-	for i in range(20):
-		var water_color := Color("8eeaff") if i % 3 == 0 else Color("36b9d3")
-		draw_rect(Rect2(385 + i * 26, 70 + (i % 4) * 8, 29, 495), water_color.darkened(float(i % 5) * 0.045))
-	for i in range(22):
-		var mist_x := float((i * 83 + 17) % 930 + 170)
-		draw_rect(Rect2(mist_x, 500 + (i % 5) * 13, 90, 16), Color(0.72, 0.96, 1.0, 0.19))
-	draw_rect(Rect2(0, 555, 1280, 165), Color("0a3442"))
-	draw_rect(Rect2(0, 555, 1280, 12), Color("8de6e8"))
-	for i in range(28):
-		var stone := Color("345866") if i % 2 == 0 else Color("274752")
-		draw_rect(Rect2(i * 49 - 20, 585 + (i % 3) * 28, 55, 19), stone)
-
-func draw_desert_background() -> void:
-	draw_gradient(Color("2b4062"), Color("e8a85c"))
-	draw_rect(Rect2(930, 115, 118, 118), Color("ffd98a"))
-	draw_rect(Rect2(947, 132, 84, 84), Color("fff0b5"))
-	for i in range(12):
-		var dune_y := 390 + i * 13
-		var inset: float = absf(6.0 - float(i)) * 52.0
-		draw_rect(Rect2(inset - 110, dune_y, 1490 - inset * 2, 15), Color("c8783f").lightened(float(i) * 0.018))
-	for i in range(7):
-		var ruin_x := 75 + i * 190
-		var ruin_h := 100 + (i * 47) % 170
-		draw_rect(Rect2(ruin_x, 535 - ruin_h, 38, ruin_h), Color("8d5535"))
-		draw_rect(Rect2(ruin_x - 18, 535 - ruin_h, 74, 20), Color("b27245"))
-	draw_rect(Rect2(0, 548, 1280, 172), Color("a96537"))
-	draw_rect(Rect2(0, 548, 1280, 10), Color("f4c06c"))
-	for i in range(32):
-		draw_rect(Rect2(i * 43, 580 + (i % 4) * 29, 26, 6), Color("d7924d"))
-
-func draw_space_background() -> void:
-	draw_gradient(Color("030512"), Color("121238"))
-	for i in range(70):
-		var star_x := float((i * 197 + 31) % 1280)
-		var star_y := float(98 + (i * 89) % 420)
-		var star_size := float(2 + i % 5)
-		var star_color := Color("b7e5ff") if i % 3 else Color("f3c6ff")
-		draw_rect(Rect2(star_x, star_y, star_size, star_size), star_color)
-	for i in range(12):
-		draw_rect(Rect2(120 + i * 78, 170 + (i % 4) * 34, 190, 28), Color(0.42, 0.2, 0.72, 0.08))
-	draw_rect(Rect2(900, 145, 210, 210), Color("271d59"))
-	draw_rect(Rect2(925, 170, 160, 160), Color("493a8e"))
-	draw_rect(Rect2(955, 200, 100, 100), Color("7764c5"))
-	draw_rect(Rect2(0, 552, 1280, 168), Color("0c1125"))
-	draw_rect(Rect2(0, 552, 1280, 8), Color("8e7cff"))
-	for i in range(20):
-		draw_rect(Rect2(i * 66 + 9, 594 + (i % 3) * 31, 42, 9), Color("222d55"))
-
-func draw_lava_background() -> void:
-	draw_gradient(Color("170509"), Color("5b160d"))
-	for i in range(16):
-		var cliff_x := float(i * 86 - 25)
-		var cliff_h := float(150 + (i * 61) % 260)
-		draw_rect(Rect2(cliff_x, 550 - cliff_h, 69, cliff_h), Color("211014"))
-		draw_rect(Rect2(cliff_x + 11, 550 - cliff_h, 9, cliff_h), Color("4b2020"))
-	for i in range(26):
-		var ember_x := float((i * 137 + 19) % 1280)
-		var ember_y := float(110 + (i * 73) % 410)
-		draw_rect(Rect2(ember_x, ember_y, 5 + i % 6, 12 + i % 11), Color("ff7a1a"))
-	draw_rect(Rect2(0, 550, 1280, 170), Color("281114"))
-	draw_rect(Rect2(0, 550, 1280, 13), Color("ffb12b"))
-	for i in range(22):
-		var crack_x := float(i * 61 + 8)
-		draw_rect(Rect2(crack_x, 575 + (i % 4) * 28, 38, 7), Color("ff4d16"))
-		draw_rect(Rect2(crack_x + 15, 582 + (i % 4) * 28, 8, 24), Color("b42a13"))
+		var patch_x := float(i * 53 - 18)
+		draw_rect(Rect2(patch_x, 586 + (i % 4) * 30, 36, 9), Color("20b947"))
+		draw_rect(Rect2(patch_x + 18, 574 + (i % 3) * 34, 12, 18), Color("8af56b"))
 
 func build_world() -> void:
 	player = RectFighterScript.new()
 	player.position = Vector2(300, 445)
-	player.setup(false, Color("37c9b0"), "YOU")
+	player.setup(false, Color("38d86b"), "Player")
 	add_child(player)
 	boss = RectFighterScript.new()
 	boss.position = Vector2(975, 445)
 	boss.scale = Vector2(1.28, 1.28)
-	boss.setup(true, BOSS_COLORS[0], BOSS_NAMES[0])
+	boss.setup(true, BOSS_COLORS[0], element_name(1))
 	add_child(boss)
 
 func make_theme() -> Theme:
 	var t := Theme.new()
 	t.default_font_size = 18
 	var normal := StyleBoxFlat.new()
-	normal.bg_color = Color("222a3a")
-	normal.border_color = Color("3d4962")
+	normal.bg_color = Color("fff176")
+	normal.border_color = Color("1597d4")
 	normal.set_border_width_all(2)
 	normal.content_margin_left = 18
 	normal.content_margin_right = 18
 	normal.content_margin_top = 11
 	normal.content_margin_bottom = 11
 	var hover := normal.duplicate()
-	hover.bg_color = Color("34415a")
-	hover.border_color = Color("66e3c4")
+	hover.bg_color = Color("a7f27b")
+	hover.border_color = Color("087fbd")
 	var pressed := normal.duplicate()
-	pressed.bg_color = Color("141a27")
+	pressed.bg_color = Color("64d96e")
 	var disabled := normal.duplicate()
-	disabled.bg_color = Color("151a24")
-	disabled.border_color = Color("252d3c")
+	disabled.bg_color = Color("d7e8d2")
+	disabled.border_color = Color("9bb6a0")
 	t.set_stylebox("normal", "Button", normal)
 	t.set_stylebox("hover", "Button", hover)
 	t.set_stylebox("pressed", "Button", pressed)
 	t.set_stylebox("disabled", "Button", disabled)
-	t.set_color("font_color", "Button", Color("edf2f7"))
-	t.set_color("font_hover_color", "Button", Color("7fffdc"))
+	t.set_color("font_color", "Button", Color("123c56"))
+	t.set_color("font_hover_color", "Button", Color("0a3a25"))
+	t.set_color("font_disabled_color", "Button", Color("6f8278"))
+	t.set_color("font_color", "Label", Color("123c56"))
 	return t
 
 func build_ui() -> void:
@@ -256,10 +223,13 @@ func build_ui() -> void:
 	add_child(ui)
 	ui.add_child(build_hud())
 	ui.add_child(build_lobby())
+	ui.add_child(build_stats_screen())
+	ui.add_child(build_reset_confirm_screen())
 	ui.add_child(build_inventory())
 	ui.add_child(build_shop())
 	ui.add_child(build_pause_screen())
 	ui.add_child(build_overlay())
+	ui.add_child(build_item_drop_popup())
 
 	toast_label = Label.new()
 	toast_label.position = Vector2(390, 625)
@@ -278,7 +248,7 @@ func title_label(text_value: String, size_value := 30) -> Label:
 	label.text = text_value
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", size_value)
-	label.add_theme_color_override("font_color", Color("f7fafc"))
+	label.add_theme_color_override("font_color", Color("123c56"))
 	return label
 
 func panel_box(color: Color, pos: Vector2, box_size: Vector2) -> ColorRect:
@@ -293,17 +263,17 @@ func build_hud() -> Control:
 	full_rect(hud)
 	hud.theme = make_theme()
 
-	var top := panel_box(Color("101522"), Vector2.ZERO, Vector2(1280, 90))
+	var top := panel_box(Color("eafcff"), Vector2.ZERO, Vector2(1280, 90))
 	hud.add_child(top)
-	level_label = title_label("LEVEL 1 / 1000", 24)
-	level_label.position = Vector2(32, 18)
-	level_label.size = Vector2(240, 34)
+	level_label = title_label("Level 1 - Hydrogen", 20)
+	level_label.position = Vector2(24, 18)
+	level_label.size = Vector2(390, 34)
 	top.add_child(level_label)
 	timer_label = title_label("30.0", 28)
 	timer_label.position = Vector2(565, 9)
 	timer_label.size = Vector2(150, 36)
 	top.add_child(timer_label)
-	var timer_back := panel_box(Color("262d3d"), Vector2(430, 54), Vector2(420, 12))
+	var timer_back := panel_box(Color("b9d9e5"), Vector2(430, 54), Vector2(420, 12))
 	top.add_child(timer_back)
 	timer_fill = panel_box(Color("55d6be"), Vector2.ZERO, Vector2(420, 12))
 	timer_back.add_child(timer_fill)
@@ -314,17 +284,13 @@ func build_hud() -> Control:
 	top.add_child(stats_label)
 
 	var inv_btn := Button.new()
-	inv_btn.text = "INVENTORY"
+	inv_btn.text = "Inventory"
 	inv_btn.position = Vector2(1096, 17)
 	inv_btn.size = Vector2(160, 52)
 	inv_btn.pressed.connect(open_inventory)
 	top.add_child(inv_btn)
 
-	var p_name := title_label("YOU", 18)
-	p_name.position = Vector2(150, 275)
-	p_name.size = Vector2(300, 30)
-	hud.add_child(p_name)
-	var pbar := panel_box(Color("2a1820"), Vector2(130, 518), Vector2(340, 24))
+	var pbar := panel_box(Color("d9f6df"), Vector2(130, 518), Vector2(340, 24))
 	hud.add_child(pbar)
 	player_hp_fill = panel_box(Color("39d98a"), Vector2.ZERO, Vector2(340, 24))
 	pbar.add_child(player_hp_fill)
@@ -333,7 +299,7 @@ func build_hud() -> Control:
 	player_hp_label.size = pbar.size
 	pbar.add_child(player_hp_label)
 
-	var bbar := panel_box(Color("2a1820"), Vector2(810, 518), Vector2(340, 24))
+	var bbar := panel_box(Color("ffe0e4"), Vector2(810, 518), Vector2(340, 24))
 	hud.add_child(bbar)
 	boss_hp_fill = panel_box(Color("ef476f"), Vector2.ZERO, Vector2(340, 24))
 	bbar.add_child(boss_hp_fill)
@@ -348,70 +314,163 @@ func build_lobby() -> Control:
 	lobby = Control.new()
 	full_rect(lobby)
 	lobby.theme = make_theme()
-	var shade := panel_box(Color(0.035, 0.047, 0.075, 0.95), Vector2.ZERO, Vector2(1280, 720))
+	var shade := panel_box(Color(0.52, 0.88, 1.0, 0.94), Vector2.ZERO, Vector2(1280, 720))
 	lobby.add_child(shade)
-	var stripe := panel_box(Color("55d6be"), Vector2(0, 0), Vector2(22, 720))
+	var stripe := panel_box(Color("44d75f"), Vector2(0, 0), Vector2(22, 720))
 	lobby.add_child(stripe)
-	var box := panel_box(Color("111827"), Vector2(365, 70), Vector2(550, 580))
+	var box := panel_box(Color("f5fff0"), Vector2(330, 24), Vector2(620, 672))
 	lobby.add_child(box)
 	var v := VBoxContainer.new()
-	v.position = Vector2(42, 34)
-	v.size = Vector2(466, 510)
-	v.add_theme_constant_override("separation", 14)
+	v.position = Vector2(42, 88)
+	v.size = Vector2(536, 520)
+	v.add_theme_constant_override("separation", 12)
 	box.add_child(v)
-	var subtitle := title_label("1000 BOSSES // ONE LIFE", 28)
-	subtitle.add_theme_color_override("font_color", Color("93a4bd"))
-	subtitle.custom_minimum_size = Vector2(0, 72)
-	v.add_child(subtitle)
-	lobby_message = title_label("", 18)
-	lobby_message.custom_minimum_size = Vector2(0, 78)
-	lobby_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lobby_message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	v.add_child(lobby_message)
+	var game_title := title_label("Elementalist", 46)
+	game_title.add_theme_color_override("font_color", Color("087fbd"))
+	game_title.custom_minimum_size = Vector2(0, 55)
+	v.add_child(game_title)
 	var start := Button.new()
-	start.text = "START RUN  [LEVEL 1]"
-	start.custom_minimum_size = Vector2(0, 62)
+	start.text = "Start Run  [Level 1]"
+	start.custom_minimum_size = Vector2(0, 48)
 	start.pressed.connect(start_run)
 	v.add_child(start)
 	resume_run_button = Button.new()
-	resume_run_button.text = "RESUME SAVED RUN"
-	resume_run_button.custom_minimum_size = Vector2(0, 58)
+	resume_run_button.text = "Resume Saved Run"
+	resume_run_button.custom_minimum_size = Vector2(0, 48)
 	resume_run_button.pressed.connect(resume_saved_run)
 	v.add_child(resume_run_button)
 	var inv := Button.new()
-	inv.text = "INVENTORY & EQUIPMENT"
-	inv.custom_minimum_size = Vector2(0, 56)
+	inv.text = "Inventory & Equipment"
+	inv.custom_minimum_size = Vector2(0, 48)
 	inv.pressed.connect(open_inventory)
 	v.add_child(inv)
 	var shop := Button.new()
-	shop.text = "LOOT CRATE SHOP"
-	shop.custom_minimum_size = Vector2(0, 56)
+	shop.text = "Loot Crate Shop"
+	shop.custom_minimum_size = Vector2(0, 48)
 	shop.pressed.connect(open_shop)
 	v.add_child(shop)
-	var help := Label.new()
-	help.text = "Combat is automatic. Defeat each boss in 30 seconds.\nESC pauses and can save your exact run position.\nEquipment, inventory, gold, and highest level persist."
-	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	help.add_theme_color_override("font_color", Color("8897ad"))
-	help.add_theme_font_size_override("font_size", 15)
-	v.add_child(help)
+	var stats := Button.new()
+	stats.text = "Stats"
+	stats.custom_minimum_size = Vector2(0, 48)
+	stats.pressed.connect(open_stats)
+	v.add_child(stats)
+	var reset := Button.new()
+	reset.text = "Reset All Game Data"
+	reset.custom_minimum_size = Vector2(0, 48)
+	reset.pressed.connect(open_reset_confirmation)
+	reset.add_theme_color_override("font_color", Color("8d271f"))
+	v.add_child(reset)
+	exit_game_button = Button.new()
+	exit_game_button.text = "Exit Game"
+	exit_game_button.custom_minimum_size = Vector2(0, 48)
+	exit_game_button.pressed.connect(exit_game)
+	v.add_child(exit_game_button)
 	return lobby
+
+func build_stats_screen() -> Control:
+	stats_screen = Control.new()
+	full_rect(stats_screen)
+	stats_screen.theme = make_theme()
+	stats_screen.add_child(panel_box(Color(0.55, 0.9, 1.0, 0.97), Vector2.ZERO, Vector2(1280, 720)))
+	var box := panel_box(Color("f5fff0"), Vector2(370, 155), Vector2(540, 410))
+	stats_screen.add_child(box)
+	var header := title_label("Elementalist Stats", 36)
+	header.position = Vector2(30, 36)
+	header.size = Vector2(480, 52)
+	header.add_theme_color_override("font_color", Color("087fbd"))
+	box.add_child(header)
+	lifetime_stats_label = title_label("", 24)
+	lifetime_stats_label.position = Vector2(45, 115)
+	lifetime_stats_label.size = Vector2(450, 145)
+	lifetime_stats_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	box.add_child(lifetime_stats_label)
+	var close := Button.new()
+	close.text = "Back to Lobby"
+	close.position = Vector2(120, 305)
+	close.size = Vector2(300, 58)
+	close.pressed.connect(close_modal)
+	box.add_child(close)
+	stats_screen.visible = false
+	return stats_screen
+
+func build_reset_confirm_screen() -> Control:
+	reset_confirm_screen = Control.new()
+	full_rect(reset_confirm_screen)
+	reset_confirm_screen.theme = make_theme()
+	reset_confirm_screen.add_child(panel_box(Color(0.22, 0.55, 0.72, 0.78), Vector2.ZERO, Vector2(1280, 720)))
+	var box := panel_box(Color("fffbea"), Vector2(360, 180), Vector2(560, 360))
+	reset_confirm_screen.add_child(box)
+	var header := title_label("Reset All Game Data?", 32)
+	header.position = Vector2(30, 42)
+	header.size = Vector2(500, 48)
+	header.add_theme_color_override("font_color", Color("b13a2c"))
+	box.add_child(header)
+	var warning := title_label("This permanently clears your items, equipment, gold,\nsaved run, progress, and lifetime stats.", 18)
+	warning.position = Vector2(45, 108)
+	warning.size = Vector2(470, 90)
+	warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	warning.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	box.add_child(warning)
+	var cancel := Button.new()
+	cancel.text = "Cancel"
+	cancel.position = Vector2(45, 245)
+	cancel.size = Vector2(220, 58)
+	cancel.pressed.connect(close_modal)
+	box.add_child(cancel)
+	var confirm := Button.new()
+	confirm.text = "Yes, Reset Everything"
+	confirm.position = Vector2(295, 245)
+	confirm.size = Vector2(220, 58)
+	confirm.pressed.connect(reset_all_game_data)
+	confirm.add_theme_color_override("font_color", Color("8d271f"))
+	box.add_child(confirm)
+	reset_confirm_screen.visible = false
+	return reset_confirm_screen
 
 func build_inventory() -> Control:
 	inventory_screen = Control.new()
 	full_rect(inventory_screen)
 	inventory_screen.theme = make_theme()
-	inventory_screen.add_child(panel_box(Color(0.02, 0.027, 0.045, 0.98), Vector2.ZERO, Vector2(1280, 720)))
-	var header := title_label("INVENTORY // EQUIPMENT", 32)
+	inventory_screen.add_child(panel_box(Color("dff8ff"), Vector2.ZERO, Vector2(1280, 720)))
+	var header := title_label("Inventory / Equipment", 32)
 	header.position = Vector2(35, 20)
 	header.size = Vector2(850, 46)
 	inventory_screen.add_child(header)
 	inventory_count_label = Label.new()
 	inventory_count_label.position = Vector2(35, 72)
-	inventory_count_label.size = Vector2(800, 32)
+	inventory_count_label.size = Vector2(1000, 32)
+	inventory_count_label.add_theme_font_size_override("font_size", 14)
 	inventory_screen.add_child(inventory_count_label)
+	var filters := HBoxContainer.new()
+	filters.position = Vector2(28, 104)
+	filters.size = Vector2(700, 42)
+	filters.add_theme_constant_override("separation", 10)
+	inventory_screen.add_child(filters)
+	var type_label := Label.new()
+	type_label.text = "Item Type"
+	type_label.custom_minimum_size = Vector2(82, 38)
+	type_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	filters.add_child(type_label)
+	inventory_type_filter_button = Button.new()
+	inventory_type_filter_button.custom_minimum_size = Vector2(200, 38)
+	inventory_type_filter_button.text = "All Types (Click to Change)"
+	inventory_type_filter_button.add_theme_font_size_override("font_size", 12)
+	inventory_type_filter_button.pressed.connect(cycle_inventory_type_filter)
+	filters.add_child(inventory_type_filter_button)
+	var rarity_label := Label.new()
+	rarity_label.text = "Rarity"
+	rarity_label.custom_minimum_size = Vector2(58, 38)
+	rarity_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	filters.add_child(rarity_label)
+	inventory_rarity_filter_button = Button.new()
+	inventory_rarity_filter_button.custom_minimum_size = Vector2(210, 38)
+	inventory_rarity_filter_button.text = "All Rarities (Click to Change)"
+	inventory_rarity_filter_button.add_theme_font_size_override("font_size", 12)
+	inventory_rarity_filter_button.pressed.connect(cycle_inventory_rarity_filter)
+	filters.add_child(inventory_rarity_filter_button)
 	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(28, 108)
-	scroll.size = Vector2(700, 575)
+	scroll.position = Vector2(28, 154)
+	scroll.size = Vector2(700, 529)
 	inventory_screen.add_child(scroll)
 	inventory_grid = GridContainer.new()
 	inventory_grid.columns = 5
@@ -419,9 +478,9 @@ func build_inventory() -> Control:
 	inventory_grid.add_theme_constant_override("h_separation", 8)
 	inventory_grid.add_theme_constant_override("v_separation", 8)
 	scroll.add_child(inventory_grid)
-	var detail_bg := panel_box(Color("111827"), Vector2(755, 98), Vector2(495, 585))
+	var detail_bg := panel_box(Color("f5fff0"), Vector2(755, 98), Vector2(495, 585))
 	inventory_screen.add_child(detail_bg)
-	var equipped_title := title_label("EQUIPPED", 21)
+	var equipped_title := title_label("Equipped", 21)
 	equipped_title.position = Vector2(18, 12)
 	equipped_title.size = Vector2(459, 32)
 	detail_bg.add_child(equipped_title)
@@ -436,30 +495,38 @@ func build_inventory() -> Control:
 	item_details.add_theme_constant_override("separation", 5)
 	detail_bg.add_child(item_details)
 	var close := Button.new()
-	close.text = "CLOSE"
+	close.text = "Close"
 	close.position = Vector2(1058, 20)
 	close.size = Vector2(192, 58)
 	close.pressed.connect(close_modal)
 	inventory_screen.add_child(close)
-	inventory_tooltip = panel_box(Color(0.035, 0.055, 0.09, 0.98), Vector2.ZERO, Vector2(310, 164))
+	inventory_tooltip = panel_box(Color("fff9c4"), Vector2.ZERO, Vector2(650, 196))
 	inventory_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	inventory_tooltip.z_index = 100
 	inventory_tooltip_label = Label.new()
-	inventory_tooltip_label.position = Vector2(14, 10)
-	inventory_tooltip_label.size = Vector2(282, 144)
+	inventory_tooltip_label.position = Vector2(16, 12)
+	inventory_tooltip_label.size = Vector2(294, 172)
 	inventory_tooltip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	inventory_tooltip_label.add_theme_font_size_override("font_size", 16)
+	inventory_tooltip_label.add_theme_font_size_override("font_size", 15)
 	inventory_tooltip.add_child(inventory_tooltip_label)
+	var divider := panel_box(Color("82c9dd"), Vector2(323, 12), Vector2(3, 172))
+	inventory_tooltip.add_child(divider)
+	inventory_compare_label = Label.new()
+	inventory_compare_label.position = Vector2(340, 12)
+	inventory_compare_label.size = Vector2(294, 172)
+	inventory_compare_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inventory_compare_label.add_theme_font_size_override("font_size", 15)
+	inventory_tooltip.add_child(inventory_compare_label)
 	inventory_screen.add_child(inventory_tooltip)
 	inventory_tooltip.visible = false
 	inventory_screen.visible = false
 	return inventory_screen
 
 func add_outline_block(rect: Rect2) -> void:
-	var outer := panel_box(Color("60708a"), rect.position, rect.size)
+	var outer := panel_box(Color("1597d4"), rect.position, rect.size)
 	outer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	equipment_panel.add_child(outer)
-	var inner := panel_box(Color("192234"), Vector2(5, 5), rect.size - Vector2(10, 10))
+	var inner := panel_box(Color("e8fff0"), Vector2(5, 5), rect.size - Vector2(10, 10))
 	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	outer.add_child(inner)
 
@@ -475,8 +542,8 @@ func build_shop() -> Control:
 	shop_screen = Control.new()
 	full_rect(shop_screen)
 	shop_screen.theme = make_theme()
-	shop_screen.add_child(panel_box(Color(0.02, 0.027, 0.045, 0.98), Vector2.ZERO, Vector2(1280, 720)))
-	var header := title_label("LOOT CRATE SHOP", 36)
+	shop_screen.add_child(panel_box(Color("dff8ff"), Vector2.ZERO, Vector2(1280, 720)))
+	var header := title_label("Loot Crate Shop", 36)
 	header.position = Vector2(40, 28)
 	header.size = Vector2(1200, 50)
 	shop_screen.add_child(header)
@@ -491,7 +558,7 @@ func build_shop() -> Control:
 	shop_crates.add_theme_constant_override("separation", 10)
 	shop_screen.add_child(shop_crates)
 	var close := Button.new()
-	close.text = "BACK TO LOBBY"
+	close.text = "Back to Lobby"
 	close.position = Vector2(500, 620)
 	close.size = Vector2(280, 58)
 	close.pressed.connect(close_modal)
@@ -503,27 +570,22 @@ func build_pause_screen() -> Control:
 	pause_screen = Control.new()
 	full_rect(pause_screen)
 	pause_screen.theme = make_theme()
-	pause_screen.add_child(panel_box(Color(0.01, 0.015, 0.03, 0.78), Vector2.ZERO, Vector2(1280, 720)))
-	var box := panel_box(Color("131c2e"), Vector2(410, 165), Vector2(460, 390))
+	pause_screen.add_child(panel_box(Color(0.25, 0.7, 0.9, 0.72), Vector2.ZERO, Vector2(1280, 720)))
+	var box := panel_box(Color("f5fff0"), Vector2(410, 200), Vector2(460, 320))
 	pause_screen.add_child(box)
-	var title := title_label("RUN PAUSED", 36)
-	title.position = Vector2(25, 36)
-	title.size = Vector2(410, 50)
-	box.add_child(title)
-	var note := title_label("Your combat timer is frozen.\nSave & Exit stores this level, health, boss health, timer, and arena.", 17)
-	note.position = Vector2(35, 98)
-	note.size = Vector2(390, 90)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(note)
+	pause_title_label = title_label("Paused", 36)
+	pause_title_label.position = Vector2(25, 34)
+	pause_title_label.size = Vector2(410, 50)
+	box.add_child(pause_title_label)
 	var resume := Button.new()
-	resume.text = "RESUME"
-	resume.position = Vector2(75, 215)
+	resume.text = "Resume"
+	resume.position = Vector2(75, 125)
 	resume.size = Vector2(310, 58)
 	resume.pressed.connect(close_pause_menu)
 	box.add_child(resume)
 	var save_exit := Button.new()
-	save_exit.text = "SAVE & EXIT TO LOBBY"
-	save_exit.position = Vector2(75, 292)
+	save_exit.text = "Save & Exit to Lobby"
+	save_exit.position = Vector2(75, 205)
 	save_exit.size = Vector2(310, 58)
 	save_exit.pressed.connect(save_and_exit_run)
 	box.add_child(save_exit)
@@ -534,10 +596,10 @@ func build_overlay() -> Control:
 	overlay = Control.new()
 	full_rect(overlay)
 	overlay.theme = make_theme()
-	overlay.add_child(panel_box(Color(0.02, 0.025, 0.04, 0.92), Vector2.ZERO, Vector2(1280, 720)))
-	var box := panel_box(Color("141b2b"), Vector2(390, 185), Vector2(500, 350))
+	overlay.add_child(panel_box(Color(0.35, 0.78, 0.95, 0.9), Vector2.ZERO, Vector2(1280, 720)))
+	var box := panel_box(Color("fffbea"), Vector2(390, 185), Vector2(500, 350))
 	overlay.add_child(box)
-	overlay_title = title_label("RUN OVER", 38)
+	overlay_title = title_label("Run Over", 38)
 	overlay_title.position = Vector2(30, 40)
 	overlay_title.size = Vector2(440, 52)
 	box.add_child(overlay_title)
@@ -548,7 +610,7 @@ func build_overlay() -> Control:
 	overlay_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	box.add_child(overlay_body)
 	overlay_button = Button.new()
-	overlay_button.text = "RETURN TO LOBBY"
+	overlay_button.text = "Return to Lobby"
 	overlay_button.position = Vector2(110, 260)
 	overlay_button.size = Vector2(280, 58)
 	overlay_button.pressed.connect(show_lobby)
@@ -556,17 +618,37 @@ func build_overlay() -> Control:
 	overlay.visible = false
 	return overlay
 
+func build_item_drop_popup() -> Control:
+	item_drop_popup = Control.new()
+	item_drop_popup.position = Vector2(340, 260)
+	item_drop_popup.size = Vector2(600, 160)
+	item_drop_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	item_drop_popup.z_index = 200
+	var border := panel_box(Color("1597d4"), Vector2.ZERO, item_drop_popup.size)
+	item_drop_popup.add_child(border)
+	var inner := panel_box(Color("fff9c4"), Vector2(5, 5), item_drop_popup.size - Vector2(10, 10))
+	border.add_child(inner)
+	item_drop_label = title_label("", 27)
+	item_drop_label.position = Vector2(24, 18)
+	item_drop_label.size = Vector2(542, 114)
+	item_drop_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	item_drop_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inner.add_child(item_drop_label)
+	item_drop_popup.pivot_offset = item_drop_popup.size * 0.5
+	item_drop_popup.visible = false
+	return item_drop_popup
+
 func _process(delta: float) -> void:
 	if inventory_tooltip != null and inventory_tooltip.visible:
 		var mouse_pos := get_viewport().get_mouse_position() + Vector2(18, 18)
-		inventory_tooltip.position = Vector2(minf(mouse_pos.x, 958.0), minf(mouse_pos.y, 538.0))
+		inventory_tooltip.position = Vector2(minf(mouse_pos.x, 612.0), minf(mouse_pos.y, 506.0))
 	if mode != Mode.RUNNING or modal_open:
 		return
 	level_time -= delta
 	player_attack_clock -= delta
 	boss_attack_clock -= delta
 	if level_time <= 0.0:
-		end_run("TIME EXPIRED", "The Level %d boss survived for 30 seconds." % level)
+		end_run("Time Expired", "The Level %d boss survived for 30 seconds." % level)
 		return
 	if player_attack_clock <= 0.0:
 		player_attack_clock += 1.0
@@ -580,7 +662,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		if pause_screen.visible:
 			close_pause_menu()
-		elif inventory_screen.visible or shop_screen.visible:
+		elif inventory_screen.visible or shop_screen.visible or stats_screen.visible or reset_confirm_screen.visible:
 			close_modal()
 		elif mode == Mode.RUNNING:
 			open_pause_menu()
@@ -601,7 +683,7 @@ func start_run() -> void:
 
 func spawn_level() -> void:
 	if level > MAX_LEVEL:
-		end_run("ALL BOSSES DEFEATED", "All 1000 bosses have fallen. Your build is eternal.")
+		end_run("All Elements Mastered", "All 118 elemental levels have fallen. Your build is complete.")
 		return
 	player_max_hp = 100.0
 	player_hp = player_max_hp
@@ -611,21 +693,16 @@ func spawn_level() -> void:
 	level_time = 30.0
 	player_attack_clock = 0.35
 	boss_attack_clock = 0.85
-	var previous_background := current_background
-	current_background = randi_range(0, BACKGROUND_NAMES.size() - 1)
-	if level > 1 and current_background == previous_background:
-		current_background = (current_background + randi_range(1, BACKGROUND_NAMES.size() - 1)) % BACKGROUND_NAMES.size()
+	current_background = 0
 	player.revive()
 	boss.revive()
-	var boss_index := (level - 1) % BOSS_NAMES.size()
-	var boss_title: String = BOSS_NAMES[boss_index]
-	if level % 10 == 0:
-		boss_title = "ELITE " + boss_title
+	var boss_index := (level - 1) % BOSS_COLORS.size()
+	var boss_title := element_name(level)
 	boss.setup(true, BOSS_COLORS[boss_index], boss_title)
 	boss.scale = Vector2(1.28, 1.28)
 	highest_level = maxi(highest_level, level)
 	save_game()
-	show_toast("LEVEL %d // %s" % [level, BACKGROUND_NAMES[current_background]], Color("e2e8f0"))
+	show_toast("Level %d - %s" % [level, element_name(level)], Color("8a6a00"))
 	queue_redraw()
 	update_hud()
 
@@ -633,6 +710,9 @@ func player_strike() -> void:
 	if boss_hp <= 0.0:
 		return
 	var damage := get_damage()
+	if damage > most_damage_one_hit:
+		most_damage_one_hit = damage
+		save_game()
 	boss_hp = maxf(0.0, boss_hp - damage)
 	player.attack()
 	boss.hurt()
@@ -654,22 +734,20 @@ func boss_strike() -> void:
 	spawn_impact(player.position + Vector2(70, -10), Color("ef476f"), false)
 	if player_hp <= 0.0:
 		player.defeat()
-		end_run("YOU FELL", "The Level %d boss ended this run." % level)
+		end_run("You Fell", "The Level %d boss ended this run." % level)
 
 func boss_defeated() -> void:
 	boss.defeat()
+	highest_level_defeated = maxi(highest_level_defeated, level)
 	for i in range(22):
 		spawn_single_particle(boss.position + Vector2(randf_range(-50, 50), randf_range(-70, 40)), Vector2(randf_range(-150, 150), randf_range(-230, -50)), boss.body_color, Vector2(randf_range(5, 13), randf_range(5, 13)), 0.9)
 	var reward := roll_drop()
-	if reward.is_empty():
-		show_toast("BOSS DOWN // NO ITEM DROPPED", Color("94a3b8"))
-	elif inventory.size() >= MAX_INVENTORY:
-		show_toast("DROP LOST // INVENTORY FULL", Color("ff718a"))
+	if inventory.size() >= MAX_INVENTORY:
+		show_toast("Drop Lost - Inventory Full", Color("b52b43"))
 	else:
 		inventory.append(reward)
-		var message := "%s %s AUTO-COLLECTED" % [reward.rarity.to_upper(), reward.type.to_upper()]
-		show_toast(message, RARITY_COLOR[reward.rarity])
-		save_game()
+		show_item_drop(reward)
+	save_game()
 	level += 1
 	get_tree().create_timer(1.15).timeout.connect(spawn_level)
 
@@ -679,7 +757,7 @@ func end_run(title: String, reason: String) -> void:
 	mode = Mode.RUN_OVER
 	modal_open = true
 	saved_run.clear()
-	last_run_message = "%s\nReached Level %d. Next run starts at Level 1." % [reason, level]
+	last_run_message = "%s\nReached Level %d. Next run starts at Level 1." % [reason, mini(level, MAX_LEVEL)]
 	overlay_title.text = title
 	overlay_body.text = last_run_message
 	overlay.visible = true
@@ -693,12 +771,51 @@ func show_lobby() -> void:
 	pause_screen.visible = false
 	inventory_screen.visible = false
 	shop_screen.visible = false
+	stats_screen.visible = false
+	reset_confirm_screen.visible = false
 	lobby.visible = true
-	lobby_message.text = last_run_message if not last_run_message.is_empty() else "Gear up, then begin at Level 1.\nHighest level reached: %d" % highest_level
 	resume_run_button.visible = not saved_run.is_empty()
 	if not saved_run.is_empty():
-		resume_run_button.text = "RESUME SAVED RUN  [LEVEL %d]" % int(saved_run.get("level", 1))
+		resume_run_button.text = "Resume Saved Run  [Level %d]" % int(saved_run.get("level", 1))
 	update_gold_labels()
+
+func exit_game() -> void:
+	get_tree().quit()
+
+func open_stats() -> void:
+	modal_open = true
+	lobby.visible = false
+	stats_screen.visible = true
+	lifetime_stats_label.text = "Highest level defeated:  %d / %d\n%s\n\nMost damage done in one hit:  %d" % [
+		highest_level_defeated,
+		MAX_LEVEL,
+		element_name(highest_level_defeated) if highest_level_defeated > 0 else "No elements defeated yet",
+		most_damage_one_hit
+	]
+
+func open_reset_confirmation() -> void:
+	modal_open = true
+	lobby.visible = false
+	reset_confirm_screen.visible = true
+
+func reset_all_game_data() -> void:
+	gold = 0
+	highest_level = 1
+	highest_level_defeated = 0
+	most_damage_one_hit = 0
+	next_item_id = 1
+	selected_item_id = -1
+	inventory.clear()
+	equipped.clear()
+	saved_run.clear()
+	level = 1
+	current_background = 0
+	last_run_message = "All game data has been reset."
+	if not suppress_disk_saves and FileAccess.file_exists(SAVE_PATH):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
+	rebuild_inventory()
+	update_hud()
+	show_lobby()
 
 func open_pause_menu() -> void:
 	if mode != Mode.RUNNING:
@@ -737,7 +854,7 @@ func resume_saved_run() -> void:
 		return
 	mode = Mode.RUNNING
 	modal_open = false
-	level = int(saved_run.get("level", 1))
+	level = clampi(int(saved_run.get("level", 1)), 1, MAX_LEVEL)
 	player_hp = float(saved_run.get("player_hp", 100.0))
 	player_max_hp = float(saved_run.get("player_max_hp", 100.0))
 	boss_hp = float(saved_run.get("boss_hp", 1.0))
@@ -745,11 +862,9 @@ func resume_saved_run() -> void:
 	level_time = float(saved_run.get("level_time", 30.0))
 	player_attack_clock = float(saved_run.get("player_attack_clock", 0.35))
 	boss_attack_clock = float(saved_run.get("boss_attack_clock", 0.85))
-	current_background = clampi(int(saved_run.get("background", 0)), 0, BACKGROUND_NAMES.size() - 1)
-	var boss_index := (level - 1) % BOSS_NAMES.size()
-	var boss_title: String = BOSS_NAMES[boss_index]
-	if level % 10 == 0:
-		boss_title = "ELITE " + boss_title
+	current_background = 0
+	var boss_index := (level - 1) % BOSS_COLORS.size()
+	var boss_title := element_name(level)
 	player.revive()
 	boss.revive()
 	boss.setup(true, BOSS_COLORS[boss_index], boss_title)
@@ -762,10 +877,10 @@ func resume_saved_run() -> void:
 	hud.visible = true
 	queue_redraw()
 	update_hud()
-	show_toast("SAVED RUN RESUMED // LEVEL %d" % level, Color("70f0d2"))
+	show_toast("Saved Run Resumed - Level %d" % level, Color("147a58"))
 
 func update_hud() -> void:
-	level_label.text = "LEVEL %d / %d" % [level, MAX_LEVEL]
+	level_label.text = "Level %d - %s" % [level, element_name(level)]
 	timer_label.text = "%04.1f" % maxf(0.0, level_time)
 	timer_fill.size.x = 420.0 * clampf(level_time / 30.0, 0.0, 1.0)
 	timer_fill.color = Color("ef476f") if level_time < 8.0 else Color("55d6be")
@@ -773,7 +888,7 @@ func update_hud() -> void:
 	boss_hp_fill.size.x = 340.0 * clampf(boss_hp / boss_max_hp, 0.0, 1.0)
 	player_hp_label.text = "%d / %d" % [ceili(player_hp), ceili(player_max_hp)]
 	boss_hp_label.text = "%d / %d" % [ceili(boss_hp), ceili(boss_max_hp)]
-	stats_label.text = "DMG  %d\nARM  %d   LUCK  %d" % [get_damage(), get_armour(), get_luck()]
+	stats_label.text = "Damage  %d\nArmour  %d   Luck  %d" % [get_damage(), get_armour(), get_luck()]
 
 func spawn_damage_number(amount: int, pos: Vector2, tint: Color) -> void:
 	var number = DamageNumberScript.new()
@@ -818,9 +933,16 @@ func equipped_items() -> Array[Dictionary]:
 			result.append(item)
 	return result
 
+func element_name(item_level: int) -> String:
+	return ELEMENTS[clampi(item_level, 1, ELEMENTS.size()) - 1]
+
+func item_display_name(item: Dictionary) -> String:
+	var item_element := str(item.get("element", element_name(int(item.get("level", 1)))))
+	return "%s %s %s" % [item.get("rarity", "Common"), item_element, item.get("type", "Item")]
+
 func roll_drop() -> Dictionary:
 	var luck := float(get_luck())
-	var weights := [50.0 / (1.0 + luck * 0.018), 20.0, 15.0 * (1.0 + luck * 0.006), 10.0 * (1.0 + luck * 0.012), 4.0 * (1.0 + luck * 0.022), 1.0 * (1.0 + luck * 0.04)]
+	var weights := [50.0 / (1.0 + luck * 0.018), 25.0, 15.0 * (1.0 + luck * 0.008), 8.0 * (1.0 + luck * 0.018), 2.0 * (1.0 + luck * 0.04)]
 	var total := 0.0
 	for weight in weights:
 		total += weight
@@ -829,10 +951,8 @@ func roll_drop() -> Dictionary:
 	for i in range(weights.size()):
 		cursor += weights[i]
 		if roll <= cursor:
-			if i == 0:
-				return {}
-			return create_item(RARITIES[i - 1], level)
-	return {}
+			return create_item(RARITIES[i], level)
+	return create_item("Common", level)
 
 func create_item(rarity: String, item_level: int) -> Dictionary:
 	var type: String = TYPES.pick_random()
@@ -847,6 +967,7 @@ func create_item(rarity: String, item_level: int) -> Dictionary:
 		luck_bonus = maxi(1, ceili(item_level * multiplier * 0.08))
 	var item := {
 		"id": next_item_id, "type": type, "rarity": rarity, "level": item_level,
+		"element": element_name(item_level),
 		"stat": stat, "power": item_level * multiplier, "luck": luck_bonus,
 		"sell": multiplier
 	}
@@ -856,21 +977,61 @@ func create_item(rarity: String, item_level: int) -> Dictionary:
 func open_inventory() -> void:
 	modal_open = true
 	lobby.visible = false
+	stats_screen.visible = false
+	reset_confirm_screen.visible = false
 	shop_screen.visible = false
 	inventory_screen.visible = true
 	selected_item_id = inventory[0].id if not inventory.is_empty() else -1
 	rebuild_inventory()
 
+func item_matches_inventory_filters(item: Dictionary) -> bool:
+	var type_matches := inventory_type_filter == "All" or str(item.get("type", "")) == inventory_type_filter
+	var rarity_matches := inventory_rarity_filter == "All" or str(item.get("rarity", "")) == inventory_rarity_filter
+	return type_matches and rarity_matches
+
+func filtered_inventory_items() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for item in inventory:
+		if item_matches_inventory_filters(item):
+			result.append(item)
+	return result
+
+func cycle_inventory_type_filter() -> void:
+	var current_index := TYPES.find(inventory_type_filter) + 1
+	on_item_type_filter_selected((current_index + 1) % (TYPES.size() + 1))
+
+func cycle_inventory_rarity_filter() -> void:
+	var current_index := RARITIES.find(inventory_rarity_filter) + 1
+	on_inventory_rarity_filter_selected((current_index + 1) % (RARITIES.size() + 1))
+
+func on_item_type_filter_selected(index: int) -> void:
+	inventory_type_filter = "All" if index == 0 else TYPES[index - 1]
+	inventory_type_filter_button.text = "All Types (Click to Change)" if index == 0 else "%s (Click to Change)" % inventory_type_filter
+	rebuild_inventory()
+
+func on_inventory_rarity_filter_selected(index: int) -> void:
+	inventory_rarity_filter = "All" if index == 0 else RARITIES[index - 1]
+	inventory_rarity_filter_button.text = "All Rarities (Click to Change)" if index == 0 else "%s (Click to Change)" % inventory_rarity_filter
+	rebuild_inventory()
+
 func rebuild_inventory() -> void:
 	for child in inventory_grid.get_children():
 		child.queue_free()
-	inventory_count_label.text = "%d / %d SLOTS     DMG %d     ARM %d     LUCK %d     GOLD %d" % [inventory.size(), MAX_INVENTORY, get_damage(), get_armour(), get_luck(), gold]
+	var filtered_items := filtered_inventory_items()
+	inventory_count_label.text = "Showing %d of %d Items     %d / %d Slots     Damage %d     Armour %d     Luck %d     Gold %d" % [filtered_items.size(), inventory.size(), inventory.size(), MAX_INVENTORY, get_damage(), get_armour(), get_luck(), gold]
+	var selected_item := find_item(selected_item_id)
+	if selected_item.is_empty() or not item_matches_inventory_filters(selected_item):
+		selected_item_id = int(filtered_items[0].id) if not filtered_items.is_empty() else -1
 	if inventory.is_empty():
-		var empty := title_label("NO ITEMS YET\nDefeat bosses or buy a crate.", 20)
+		var empty := title_label("No Items Yet\nDefeat bosses or buy a crate.", 20)
 		empty.custom_minimum_size = Vector2(665, 110)
 		inventory_grid.add_child(empty)
+	elif filtered_items.is_empty():
+		var no_matches := title_label("No Items Match These Filters", 20)
+		no_matches.custom_minimum_size = Vector2(665, 110)
+		inventory_grid.add_child(no_matches)
 	else:
-		var sorted := inventory.duplicate()
+		var sorted := filtered_items.duplicate()
 		sorted.sort_custom(func(a: Dictionary, b: Dictionary):
 			if is_item_equipped(int(a.id)) != is_item_equipped(int(b.id)):
 				return is_item_equipped(int(a.id))
@@ -878,11 +1039,11 @@ func rebuild_inventory() -> void:
 		)
 		for item in sorted:
 			var btn := Button.new()
-			var equipped_mark := "\nEQUIPPED" if is_item_equipped(int(item.id)) else ""
-			btn.text = "%s\nLv.%d %s%s" % [item.type.to_upper(), item.level, item.rarity, equipped_mark]
+			var equipped_mark := "\nEquipped" if is_item_equipped(int(item.id)) else ""
+			btn.text = "%s\n%s %s\nLv.%d%s" % [item.rarity, str(item.get("element", element_name(int(item.level)))), item.type, item.level, equipped_mark]
 			btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
 			btn.add_theme_color_override("font_color", RARITY_COLOR[item.rarity])
-			btn.add_theme_font_size_override("font_size", 15)
+			btn.add_theme_font_size_override("font_size", 12)
 			btn.custom_minimum_size = Vector2(127, 94)
 			apply_rarity_style(btn, item.rarity, is_item_equipped(int(item.id)))
 			btn.pressed.connect(select_item.bind(int(item.id)))
@@ -912,25 +1073,33 @@ func apply_rarity_style(button: Button, rarity: String, strongly_highlighted := 
 	button.add_theme_stylebox_override("pressed", pressed)
 
 func item_tooltip_text(item: Dictionary) -> String:
-	var state := "EQUIPPED" if is_item_equipped(int(item.id)) else "IN INVENTORY"
+	var state := "Equipped" if is_item_equipped(int(item.id)) else "In Inventory"
 	var luck_line := "\n+%d Luck" % int(item.luck) if int(item.luck) > 0 else ""
-	return "%s %s\nItem Level %d  //  %s\n+%d %s%s\nSell value: %d gold" % [item.rarity.to_upper(), item.type.to_upper(), item.level, state, item.power, item.stat, luck_line, item.sell]
+	return "%s\nItem Level %d  /  %s\n+%d %s%s\nSell value: %d gold" % [item_display_name(item), item.level, state, item.power, item.stat, luck_line, item.sell]
 
 func show_item_tooltip(item: Dictionary) -> void:
 	if item.is_empty():
 		return
-	inventory_tooltip_label.text = item_tooltip_text(item)
+	inventory_tooltip_label.text = "Hovered Item\n\n%s" % item_tooltip_text(item)
 	inventory_tooltip_label.add_theme_color_override("font_color", RARITY_COLOR[item.rarity])
+	var equipped_item := find_item(int(equipped.get(item.type, -1)))
+	if equipped_item.is_empty():
+		inventory_compare_label.text = "Equipped %s\n\nNothing equipped in this slot." % item.type
+		inventory_compare_label.add_theme_color_override("font_color", Color("496878"))
+	else:
+		inventory_compare_label.text = "Equipped Comparison\n\n%s" % item_tooltip_text(equipped_item)
+		inventory_compare_label.add_theme_color_override("font_color", RARITY_COLOR[equipped_item.rarity])
 	inventory_tooltip.visible = true
 
 func show_slot_tooltip(slot: String) -> void:
 	var item := find_item(int(equipped.get(slot, -1)))
 	if item.is_empty():
-		inventory_tooltip_label.text = "%s SLOT\nNothing equipped.\nSelect a %s from the grid to equip it here." % [slot.to_upper(), slot]
+		inventory_tooltip_label.text = "%s Slot\n\nNothing equipped.\nSelect a %s from the grid to equip it here." % [slot, slot]
 		inventory_tooltip_label.add_theme_color_override("font_color", Color("a9b6ca"))
 	else:
-		inventory_tooltip_label.text = item_tooltip_text(item)
+		inventory_tooltip_label.text = "Equipped Item\n\n%s" % item_tooltip_text(item)
 		inventory_tooltip_label.add_theme_color_override("font_color", RARITY_COLOR[item.rarity])
+	inventory_compare_label.text = ""
 	inventory_tooltip.visible = true
 
 func hide_inventory_tooltip() -> void:
@@ -951,8 +1120,8 @@ func rebuild_equipment_slots() -> void:
 		"Amulet": [Rect2(18, 50, 104, 72)]
 	}
 	var display_names := {
-		"Helmet": "HEAD", "Breastplate": "CHEST", "Leggings": "LEGS",
-		"Gauntlets": "HANDS", "Sword": "SWORD", "Ring": "RING", "Amulet": "NECK"
+		"Helmet": "Head", "Breastplate": "Chest", "Leggings": "Legs",
+		"Gauntlets": "Hands", "Sword": "Sword", "Ring": "Ring", "Amulet": "Neck"
 	}
 	for slot in slot_rects:
 		var item := find_item(int(equipped.get(slot, -1)))
@@ -964,7 +1133,7 @@ func rebuild_equipment_slots() -> void:
 			btn.size = rect.size
 			btn.add_theme_font_size_override("font_size", 12)
 			if item.is_empty():
-				btn.text = slot_name + "\nEMPTY"
+				btn.text = slot_name + "\nEmpty"
 				btn.add_theme_color_override("font_color", Color("9ba9bd"))
 			else:
 				btn.text = "%s\n%s Lv.%d" % [slot_name, item.rarity, item.level]
@@ -984,10 +1153,10 @@ func rebuild_details() -> void:
 		child.queue_free()
 	var item := find_item(selected_item_id)
 	if item.is_empty():
-		var none := title_label("SELECT AN ITEM", 22)
+		var none := title_label("Select an Item", 22)
 		item_details.add_child(none)
 		return
-	var name := title_label("%s %s" % [item.rarity.to_upper(), item.type.to_upper()], 19)
+	var name := title_label(item_display_name(item), 19)
 	name.add_theme_color_override("font_color", RARITY_COLOR[item.rarity])
 	item_details.add_child(name)
 	var desc := Label.new()
@@ -1000,12 +1169,12 @@ func rebuild_details() -> void:
 	actions.add_theme_constant_override("separation", 8)
 	item_details.add_child(actions)
 	var equip_btn := Button.new()
-	equip_btn.text = "UNEQUIP" if is_item_equipped(selected_item_id) else "EQUIP"
+	equip_btn.text = "Unequip" if is_item_equipped(selected_item_id) else "Equip"
 	equip_btn.custom_minimum_size = Vector2(218, 44)
 	equip_btn.pressed.connect(toggle_equip_selected)
 	actions.add_child(equip_btn)
 	var sell_btn := Button.new()
-	sell_btn.text = "SELL FOR %d GOLD" % item.sell
+	sell_btn.text = "Sell for %d Gold" % item.sell
 	sell_btn.custom_minimum_size = Vector2(218, 44)
 	sell_btn.pressed.connect(sell_selected)
 	actions.add_child(sell_btn)
@@ -1043,6 +1212,8 @@ func open_shop() -> void:
 		return
 	modal_open = true
 	lobby.visible = false
+	stats_screen.visible = false
+	reset_confirm_screen.visible = false
 	inventory_screen.visible = false
 	shop_screen.visible = true
 	rebuild_shop()
@@ -1050,12 +1221,12 @@ func open_shop() -> void:
 func rebuild_shop() -> void:
 	for child in shop_crates.get_children():
 		child.queue_free()
-	var gold_title := title_label("GOLD: %d     CRATE LEVEL: %d" % [gold, highest_level], 24)
+	var gold_title := title_label("Gold: %d     Crate Level: %d" % [gold, highest_level], 24)
 	gold_title.custom_minimum_size = Vector2(0, 45)
 	shop_crates.add_child(gold_title)
 	for rarity in RARITIES:
 		var btn := Button.new()
-		btn.text = "%s CRATE     %d GOLD" % [rarity.to_upper(), CRATE_COST[rarity]]
+		btn.text = "%s Crate     %d Gold" % [rarity, CRATE_COST[rarity]]
 		btn.add_theme_color_override("font_color", RARITY_COLOR[rarity])
 		btn.custom_minimum_size = Vector2(0, 64)
 		btn.disabled = gold < int(CRATE_COST[rarity]) or inventory.size() >= MAX_INVENTORY
@@ -1069,13 +1240,15 @@ func buy_crate(rarity: String) -> void:
 	gold -= cost
 	var item := create_item(rarity, highest_level)
 	inventory.append(item)
-	show_toast("%s %s FOUND" % [rarity.to_upper(), item.type.to_upper()], RARITY_COLOR[rarity])
+	show_item_drop(item)
 	save_game()
 	rebuild_shop()
 
 func close_modal() -> void:
 	inventory_screen.visible = false
 	shop_screen.visible = false
+	stats_screen.visible = false
+	reset_confirm_screen.visible = false
 	hide_inventory_tooltip()
 	modal_open = false
 	if mode == Mode.RUNNING:
@@ -1103,6 +1276,21 @@ func show_toast(message: String, tint: Color) -> void:
 	tween.tween_interval(1.5)
 	tween.tween_property(toast_label, "modulate:a", 0.0, 0.5)
 
+func show_item_drop(item: Dictionary) -> void:
+	if item_drop_tween != null and item_drop_tween.is_valid():
+		item_drop_tween.kill()
+	item_drop_label.text = "New Item\n%s" % item_display_name(item)
+	item_drop_label.add_theme_color_override("font_color", RARITY_COLOR[item.rarity])
+	item_drop_popup.visible = true
+	item_drop_popup.scale = Vector2(0.9, 0.9)
+	item_drop_popup.modulate.a = 0.0
+	item_drop_tween = create_tween()
+	item_drop_tween.tween_property(item_drop_popup, "scale", Vector2.ONE, 0.16)
+	item_drop_tween.parallel().tween_property(item_drop_popup, "modulate:a", 1.0, 0.12)
+	item_drop_tween.tween_interval(2.2)
+	item_drop_tween.tween_property(item_drop_popup, "modulate:a", 0.0, 0.35)
+	item_drop_tween.tween_callback(func(): item_drop_popup.visible = false)
+
 func update_gold_labels() -> void:
 	for label in gold_labels:
 		label.text = str(gold)
@@ -1113,6 +1301,8 @@ func save_game() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("meta", "gold", gold)
 	cfg.set_value("meta", "highest_level", highest_level)
+	cfg.set_value("meta", "highest_level_defeated", highest_level_defeated)
+	cfg.set_value("meta", "most_damage_one_hit", most_damage_one_hit)
 	cfg.set_value("meta", "next_item_id", next_item_id)
 	cfg.set_value("items", "inventory", inventory)
 	cfg.set_value("items", "equipped", equipped)
@@ -1124,13 +1314,19 @@ func load_game() -> void:
 	if cfg.load(SAVE_PATH) != OK:
 		return
 	gold = int(cfg.get_value("meta", "gold", 0))
-	highest_level = int(cfg.get_value("meta", "highest_level", 1))
+	highest_level = clampi(int(cfg.get_value("meta", "highest_level", 1)), 1, MAX_LEVEL)
+	highest_level_defeated = clampi(int(cfg.get_value("meta", "highest_level_defeated", maxi(0, highest_level - 1))), 0, MAX_LEVEL)
+	most_damage_one_hit = maxi(0, int(cfg.get_value("meta", "most_damage_one_hit", 0)))
 	next_item_id = int(cfg.get_value("meta", "next_item_id", 1))
 	var loaded_inventory = cfg.get_value("items", "inventory", [])
 	inventory.clear()
 	for value in loaded_inventory:
-		if value is Dictionary:
+		if value is Dictionary and inventory.size() < MAX_INVENTORY:
+			value["level"] = clampi(int(value.get("level", 1)), 1, MAX_LEVEL)
+			value["element"] = element_name(int(value.level))
 			inventory.append(value)
 	equipped = cfg.get_value("items", "equipped", {})
 	var loaded_run = cfg.get_value("run", "saved", {})
 	saved_run = loaded_run if loaded_run is Dictionary else {}
+	if not saved_run.is_empty() and int(saved_run.get("level", 1)) > MAX_LEVEL:
+		saved_run.clear()

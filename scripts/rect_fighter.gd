@@ -54,31 +54,16 @@ func _draw() -> void:
 	var facing := -1.0 if is_boss else 1.0
 	var flash := hurt_time > 0.0 and fmod(hurt_time, 0.08) > 0.035
 	var c := Color.WHITE if flash else body_color
-	var dark := Color("111522")
-	var reach := 30.0
+	var dark := Color("123047")
+	var attack_nudge := 0.0
 	if attack_time > 0.0:
-		reach += sin((0.34 - attack_time) / 0.34 * PI) * 45.0
+		attack_nudge = sin((0.34 - attack_time) / 0.34 * PI) * 26.0 * facing
 
-	# Shadow, legs, body, head, eye, arms, and sword are all rectangles.
-	draw_rect(Rect2(-42, 65, 84, 9), Color(0, 0, 0, 0.32))
-	draw_rect(Rect2(-31, 31, 23, 38), c.darkened(0.22))
-	draw_rect(Rect2(8, 31, 23, 38), c.darkened(0.30))
-	draw_rect(Rect2(-38, -24, 76, 62), c)
-	draw_rect(Rect2(-30, -68, 60, 46), accent_color if not flash else Color.WHITE)
-	draw_rect(Rect2(12 * facing - 5, -52, 13, 9), dark)
-	var attack_push := 0.0
-	if is_boss and attack_time > 0.0:
-		attack_push = sin((0.34 - attack_time) / 0.34 * PI) * -52.0
-	draw_rect(Rect2(-57 + attack_push, -16, 19, 48), c.darkened(0.15))
-	draw_rect(Rect2(38 + attack_push, -16, 19, 48), c.darkened(0.15))
-
-	if is_boss:
-		draw_rect(Rect2(-38, -80, 15, 14), c.darkened(0.35))
-		draw_rect(Rect2(23, -80, 15, 14), c.darkened(0.35))
-		draw_rect(Rect2(-46, -11, 92, 9), accent_color)
-	else:
-		var hand_x := 50.0 + reach
-		draw_set_transform(Vector2(hand_x * facing, 9), attack_time * 2.0 * facing)
-		draw_rect(Rect2(-4, -52, 8, 90), Color("e8edf7"))
-		draw_rect(Rect2(-15, 27, 30, 7), Color("f5c451"))
-		draw_set_transform(Vector2.ZERO, 0.0)
+	# Each fighter is one plain rectangular body with rectangular eyes.
+	draw_rect(Rect2(-48 + attack_nudge, -72, 96, 140), c)
+	var eye_x := 7.0 * facing
+	draw_rect(Rect2(eye_x - 26 + attack_nudge, -38, 18, 22), Color("ffffff"))
+	draw_rect(Rect2(eye_x + 8 + attack_nudge, -38, 18, 22), Color("ffffff"))
+	var pupil_shift := 4.0 * facing
+	draw_rect(Rect2(eye_x - 21 + pupil_shift + attack_nudge, -32, 7, 11), dark)
+	draw_rect(Rect2(eye_x + 13 + pupil_shift + attack_nudge, -32, 7, 11), dark)
