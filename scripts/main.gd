@@ -14,9 +14,14 @@ const ARMOUR_TYPES := ["Breastplate", "Leggings", "Gauntlets", "Helmet"]
 const RARITIES := ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
 const RARITY_MULT := {"Common": 1, "Uncommon": 2, "Rare": 4, "Epic": 8, "Legendary": 16}
 const RARITY_COLOR := {
-	"Common": Color("3f5565"), "Uncommon": Color("20a947"),
+	"Common": Color("ffffff"), "Uncommon": Color("32d45e"),
 	"Rare": Color("55a7ff"), "Epic": Color("bd72ff"), "Legendary": Color("ff9f32")
 }
+const RARITY_TEXT_COLOR := {
+	"Common": Color("233746"), "Uncommon": Color("123f24"),
+	"Rare": Color("102f52"), "Epic": Color("ffffff"), "Legendary": Color("4b2600")
+}
+const INVENTORY_TOOLTIP_TEXT_COLOR := Color("17384a")
 const CRATE_COST := {"Common": 5, "Uncommon": 16, "Rare": 48, "Epic": 140, "Legendary": 400}
 const BOSS_COLORS := [Color("ef476f"), Color("ff6b35"), Color("8b5cf6"), Color("3b82f6"), Color("d946ef"), Color("f43f5e")]
 const BACKGROUND_NAMES := ["Sunny Meadow"]
@@ -43,6 +48,7 @@ var highest_level_defeated := 0
 var most_damage_one_hit := 0
 var gold := 0
 var inventory: Array[Dictionary] = []
+var recently_sold: Array[Dictionary] = []
 var equipped := {}
 var next_item_id := 1
 var selected_item_id := -1
@@ -85,12 +91,17 @@ var stats_label: Label
 var inventory_count_label: Label
 var toast_label: Label
 var item_drop_popup: Control
+var item_drop_border: ColorRect
+var item_drop_inner: ColorRect
 var item_drop_label: Label
 var item_drop_tween: Tween
 var gold_labels: Array[Label] = []
 var inventory_grid: GridContainer
 var inventory_type_filter_button: Button
 var inventory_rarity_filter_button: Button
+var inventory_type_filter_menu: Control
+var inventory_rarity_filter_menu: Control
+var restore_sold_button: Button
 var item_details: VBoxContainer
 var equipment_panel: Control
 var inventory_tooltip: ColorRect
@@ -434,7 +445,7 @@ func build_inventory() -> Control:
 	inventory_screen.add_child(panel_box(Color("dff8ff"), Vector2.ZERO, Vector2(1280, 720)))
 	var header := title_label("Inventory / Equipment", 32)
 	header.position = Vector2(35, 20)
-	header.size = Vector2(850, 46)
+	header.size = Vector2(690, 46)
 	inventory_screen.add_child(header)
 	inventory_count_label = Label.new()
 	inventory_count_label.position = Vector2(35, 72)
@@ -453,9 +464,8 @@ func build_inventory() -> Control:
 	filters.add_child(type_label)
 	inventory_type_filter_button = Button.new()
 	inventory_type_filter_button.custom_minimum_size = Vector2(200, 38)
-	inventory_type_filter_button.text = "All Types (Click to Change)"
-	inventory_type_filter_button.add_theme_font_size_override("font_size", 12)
-	inventory_type_filter_button.pressed.connect(cycle_inventory_type_filter)
+	inventory_type_filter_button.text = "All Types"
+	inventory_type_filter_button.pressed.connect(toggle_inventory_type_filter_menu)
 	filters.add_child(inventory_type_filter_button)
 	var rarity_label := Label.new()
 	rarity_label.text = "Rarity"
@@ -464,13 +474,53 @@ func build_inventory() -> Control:
 	filters.add_child(rarity_label)
 	inventory_rarity_filter_button = Button.new()
 	inventory_rarity_filter_button.custom_minimum_size = Vector2(210, 38)
-	inventory_rarity_filter_button.text = "All Rarities (Click to Change)"
-	inventory_rarity_filter_button.add_theme_font_size_override("font_size", 12)
-	inventory_rarity_filter_button.pressed.connect(cycle_inventory_rarity_filter)
+	inventory_rarity_filter_button.text = "All Rarities"
+	inventory_rarity_filter_button.pressed.connect(toggle_inventory_rarity_filter_menu)
 	filters.add_child(inventory_rarity_filter_button)
+	inventory_type_filter_menu = panel_box(Color("1597d4"), Vector2(120, 144), Vector2(200, (TYPES.size() + 1) * 38 + 6))
+	inventory_type_filter_menu.z_index = 150
+	var type_menu_list := VBoxContainer.new()
+	type_menu_list.position = Vector2(3, 3)
+	type_menu_list.size = Vector2(194, (TYPES.size() + 1) * 38)
+	type_menu_list.add_theme_constant_override("separation", 2)
+	inventory_type_filter_menu.add_child(type_menu_list)
+	var all_types_button := Button.new()
+	all_types_button.text = "All Types"
+	all_types_button.custom_minimum_size = Vector2(194, 36)
+	all_types_button.pressed.connect(on_item_type_filter_selected.bind(0))
+	type_menu_list.add_child(all_types_button)
+	for i in range(TYPES.size()):
+		var type_option := Button.new()
+		type_option.text = TYPES[i]
+		type_option.custom_minimum_size = Vector2(194, 36)
+		type_option.pressed.connect(on_item_type_filter_selected.bind(i + 1))
+		type_menu_list.add_child(type_option)
+	inventory_screen.add_child(inventory_type_filter_menu)
+	inventory_type_filter_menu.visible = false
+	inventory_rarity_filter_menu = panel_box(Color("1597d4"), Vector2(398, 144), Vector2(210, (RARITIES.size() + 1) * 38 + 6))
+	inventory_rarity_filter_menu.z_index = 150
+	var rarity_menu_list := VBoxContainer.new()
+	rarity_menu_list.position = Vector2(3, 3)
+	rarity_menu_list.size = Vector2(204, (RARITIES.size() + 1) * 38)
+	rarity_menu_list.add_theme_constant_override("separation", 2)
+	inventory_rarity_filter_menu.add_child(rarity_menu_list)
+	var all_rarities_button := Button.new()
+	all_rarities_button.text = "All Rarities"
+	all_rarities_button.custom_minimum_size = Vector2(204, 36)
+	all_rarities_button.pressed.connect(on_inventory_rarity_filter_selected.bind(0))
+	rarity_menu_list.add_child(all_rarities_button)
+	for i in range(RARITIES.size()):
+		var rarity_option := Button.new()
+		rarity_option.text = RARITIES[i]
+		rarity_option.custom_minimum_size = Vector2(204, 36)
+		rarity_option.pressed.connect(on_inventory_rarity_filter_selected.bind(i + 1))
+		rarity_menu_list.add_child(rarity_option)
+	inventory_screen.add_child(inventory_rarity_filter_menu)
+	inventory_rarity_filter_menu.visible = false
 	var scroll := ScrollContainer.new()
 	scroll.position = Vector2(28, 154)
 	scroll.size = Vector2(700, 529)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	inventory_screen.add_child(scroll)
 	inventory_grid = GridContainer.new()
 	inventory_grid.columns = 5
@@ -500,6 +550,11 @@ func build_inventory() -> Control:
 	close.size = Vector2(192, 58)
 	close.pressed.connect(close_modal)
 	inventory_screen.add_child(close)
+	restore_sold_button = Button.new()
+	restore_sold_button.position = Vector2(755, 20)
+	restore_sold_button.size = Vector2(280, 58)
+	restore_sold_button.pressed.connect(restore_last_sold)
+	inventory_screen.add_child(restore_sold_button)
 	inventory_tooltip = panel_box(Color("fff9c4"), Vector2.ZERO, Vector2(650, 196))
 	inventory_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	inventory_tooltip.z_index = 100
@@ -620,20 +675,20 @@ func build_overlay() -> Control:
 
 func build_item_drop_popup() -> Control:
 	item_drop_popup = Control.new()
-	item_drop_popup.position = Vector2(340, 260)
+	item_drop_popup.position = Vector2(340, 90)
 	item_drop_popup.size = Vector2(600, 160)
 	item_drop_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	item_drop_popup.z_index = 200
-	var border := panel_box(Color("1597d4"), Vector2.ZERO, item_drop_popup.size)
-	item_drop_popup.add_child(border)
-	var inner := panel_box(Color("fff9c4"), Vector2(5, 5), item_drop_popup.size - Vector2(10, 10))
-	border.add_child(inner)
+	item_drop_border = panel_box(Color("1597d4"), Vector2.ZERO, item_drop_popup.size)
+	item_drop_popup.add_child(item_drop_border)
+	item_drop_inner = panel_box(Color("fff9c4"), Vector2(5, 5), item_drop_popup.size - Vector2(10, 10))
+	item_drop_border.add_child(item_drop_inner)
 	item_drop_label = title_label("", 27)
 	item_drop_label.position = Vector2(24, 18)
 	item_drop_label.size = Vector2(542, 114)
 	item_drop_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	item_drop_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	inner.add_child(item_drop_label)
+	item_drop_inner.add_child(item_drop_label)
 	item_drop_popup.pivot_offset = item_drop_popup.size * 0.5
 	item_drop_popup.visible = false
 	return item_drop_popup
@@ -702,7 +757,6 @@ func spawn_level() -> void:
 	boss.scale = Vector2(1.28, 1.28)
 	highest_level = maxi(highest_level, level)
 	save_game()
-	show_toast("Level %d - %s" % [level, element_name(level)], Color("8a6a00"))
 	queue_redraw()
 	update_hud()
 
@@ -806,6 +860,7 @@ func reset_all_game_data() -> void:
 	next_item_id = 1
 	selected_item_id = -1
 	inventory.clear()
+	recently_sold.clear()
 	equipped.clear()
 	saved_run.clear()
 	level = 1
@@ -981,6 +1036,8 @@ func open_inventory() -> void:
 	reset_confirm_screen.visible = false
 	shop_screen.visible = false
 	inventory_screen.visible = true
+	inventory_type_filter_menu.visible = false
+	inventory_rarity_filter_menu.visible = false
 	selected_item_id = inventory[0].id if not inventory.is_empty() else -1
 	rebuild_inventory()
 
@@ -996,22 +1053,24 @@ func filtered_inventory_items() -> Array[Dictionary]:
 			result.append(item)
 	return result
 
-func cycle_inventory_type_filter() -> void:
-	var current_index := TYPES.find(inventory_type_filter) + 1
-	on_item_type_filter_selected((current_index + 1) % (TYPES.size() + 1))
+func toggle_inventory_type_filter_menu() -> void:
+	inventory_type_filter_menu.visible = not inventory_type_filter_menu.visible
+	inventory_rarity_filter_menu.visible = false
 
-func cycle_inventory_rarity_filter() -> void:
-	var current_index := RARITIES.find(inventory_rarity_filter) + 1
-	on_inventory_rarity_filter_selected((current_index + 1) % (RARITIES.size() + 1))
+func toggle_inventory_rarity_filter_menu() -> void:
+	inventory_rarity_filter_menu.visible = not inventory_rarity_filter_menu.visible
+	inventory_type_filter_menu.visible = false
 
 func on_item_type_filter_selected(index: int) -> void:
 	inventory_type_filter = "All" if index == 0 else TYPES[index - 1]
-	inventory_type_filter_button.text = "All Types (Click to Change)" if index == 0 else "%s (Click to Change)" % inventory_type_filter
+	inventory_type_filter_button.text = "All Types" if index == 0 else inventory_type_filter
+	inventory_type_filter_menu.visible = false
 	rebuild_inventory()
 
 func on_inventory_rarity_filter_selected(index: int) -> void:
 	inventory_rarity_filter = "All" if index == 0 else RARITIES[index - 1]
-	inventory_rarity_filter_button.text = "All Rarities (Click to Change)" if index == 0 else "%s (Click to Change)" % inventory_rarity_filter
+	inventory_rarity_filter_button.text = "All Rarities" if index == 0 else inventory_rarity_filter
+	inventory_rarity_filter_menu.visible = false
 	rebuild_inventory()
 
 func rebuild_inventory() -> void:
@@ -1019,6 +1078,9 @@ func rebuild_inventory() -> void:
 		child.queue_free()
 	var filtered_items := filtered_inventory_items()
 	inventory_count_label.text = "Showing %d of %d Items     %d / %d Slots     Damage %d     Armour %d     Luck %d     Gold %d" % [filtered_items.size(), inventory.size(), inventory.size(), MAX_INVENTORY, get_damage(), get_armour(), get_luck(), gold]
+	var restore_cost := int(recently_sold[-1].get("sell", 0)) if not recently_sold.is_empty() else 0
+	restore_sold_button.text = "Restore Last Sold (%d) - %d Gold" % [recently_sold.size(), restore_cost]
+	restore_sold_button.disabled = recently_sold.is_empty() or inventory.size() >= MAX_INVENTORY or gold < restore_cost
 	var selected_item := find_item(selected_item_id)
 	if selected_item.is_empty() or not item_matches_inventory_filters(selected_item):
 		selected_item_id = int(filtered_items[0].id) if not filtered_items.is_empty() else -1
@@ -1042,11 +1104,13 @@ func rebuild_inventory() -> void:
 			var equipped_mark := "\nEquipped" if is_item_equipped(int(item.id)) else ""
 			btn.text = "%s\n%s %s\nLv.%d%s" % [item.rarity, str(item.get("element", element_name(int(item.level)))), item.type, item.level, equipped_mark]
 			btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
-			btn.add_theme_color_override("font_color", RARITY_COLOR[item.rarity])
+			btn.add_theme_color_override("font_color", rarity_text_color(item.rarity))
 			btn.add_theme_font_size_override("font_size", 12)
-			btn.custom_minimum_size = Vector2(127, 94)
+			btn.custom_minimum_size = Vector2(127, 127)
+			btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			apply_rarity_style(btn, item.rarity, is_item_equipped(int(item.id)))
 			btn.pressed.connect(select_item.bind(int(item.id)))
+			btn.gui_input.connect(on_inventory_item_gui_input.bind(int(item.id)))
 			btn.mouse_entered.connect(show_item_tooltip.bind(item))
 			btn.mouse_exited.connect(hide_inventory_tooltip)
 			inventory_grid.add_child(btn)
@@ -1056,21 +1120,28 @@ func rebuild_inventory() -> void:
 func apply_rarity_style(button: Button, rarity: String, strongly_highlighted := false) -> void:
 	var color: Color = RARITY_COLOR[rarity]
 	var normal := StyleBoxFlat.new()
-	normal.bg_color = color.darkened(0.78) if not strongly_highlighted else color.darkened(0.64)
-	normal.border_color = color
+	if rarity == "Common":
+		normal.bg_color = Color("ffffff")
+		normal.border_color = Color("9fb3c1")
+	else:
+		normal.bg_color = color.darkened(0.78) if not strongly_highlighted else color.darkened(0.64)
+		normal.border_color = color
 	normal.set_border_width_all(4 if strongly_highlighted else 2)
 	normal.content_margin_left = 5
 	normal.content_margin_right = 5
 	normal.content_margin_top = 6
 	normal.content_margin_bottom = 6
 	var hover := normal.duplicate()
-	hover.bg_color = color.darkened(0.52)
+	hover.bg_color = Color("eaf7ff") if rarity == "Common" else color.darkened(0.52)
 	hover.set_border_width_all(4)
 	var pressed := normal.duplicate()
-	pressed.bg_color = color.darkened(0.84)
+	pressed.bg_color = Color("dcecf4") if rarity == "Common" else color.darkened(0.84)
 	button.add_theme_stylebox_override("normal", normal)
 	button.add_theme_stylebox_override("hover", hover)
 	button.add_theme_stylebox_override("pressed", pressed)
+
+func rarity_text_color(rarity: String) -> Color:
+	return RARITY_TEXT_COLOR.get(rarity, Color("123c56"))
 
 func item_tooltip_text(item: Dictionary) -> String:
 	var state := "Equipped" if is_item_equipped(int(item.id)) else "In Inventory"
@@ -1081,24 +1152,24 @@ func show_item_tooltip(item: Dictionary) -> void:
 	if item.is_empty():
 		return
 	inventory_tooltip_label.text = "Hovered Item\n\n%s" % item_tooltip_text(item)
-	inventory_tooltip_label.add_theme_color_override("font_color", RARITY_COLOR[item.rarity])
+	inventory_tooltip_label.add_theme_color_override("font_color", INVENTORY_TOOLTIP_TEXT_COLOR)
 	var equipped_item := find_item(int(equipped.get(item.type, -1)))
 	if equipped_item.is_empty():
 		inventory_compare_label.text = "Equipped %s\n\nNothing equipped in this slot." % item.type
-		inventory_compare_label.add_theme_color_override("font_color", Color("496878"))
+		inventory_compare_label.add_theme_color_override("font_color", INVENTORY_TOOLTIP_TEXT_COLOR)
 	else:
 		inventory_compare_label.text = "Equipped Comparison\n\n%s" % item_tooltip_text(equipped_item)
-		inventory_compare_label.add_theme_color_override("font_color", RARITY_COLOR[equipped_item.rarity])
+		inventory_compare_label.add_theme_color_override("font_color", INVENTORY_TOOLTIP_TEXT_COLOR)
 	inventory_tooltip.visible = true
 
 func show_slot_tooltip(slot: String) -> void:
 	var item := find_item(int(equipped.get(slot, -1)))
 	if item.is_empty():
 		inventory_tooltip_label.text = "%s Slot\n\nNothing equipped.\nSelect a %s from the grid to equip it here." % [slot, slot]
-		inventory_tooltip_label.add_theme_color_override("font_color", Color("a9b6ca"))
+		inventory_tooltip_label.add_theme_color_override("font_color", INVENTORY_TOOLTIP_TEXT_COLOR)
 	else:
 		inventory_tooltip_label.text = "Equipped Item\n\n%s" % item_tooltip_text(item)
-		inventory_tooltip_label.add_theme_color_override("font_color", RARITY_COLOR[item.rarity])
+		inventory_tooltip_label.add_theme_color_override("font_color", INVENTORY_TOOLTIP_TEXT_COLOR)
 	inventory_compare_label.text = ""
 	inventory_tooltip.visible = true
 
@@ -1137,7 +1208,7 @@ func rebuild_equipment_slots() -> void:
 				btn.add_theme_color_override("font_color", Color("9ba9bd"))
 			else:
 				btn.text = "%s\n%s Lv.%d" % [slot_name, item.rarity, item.level]
-				btn.add_theme_color_override("font_color", RARITY_COLOR[item.rarity])
+				btn.add_theme_color_override("font_color", rarity_text_color(item.rarity))
 				apply_rarity_style(btn, item.rarity, true)
 				btn.pressed.connect(select_item.bind(int(item.id)))
 			btn.mouse_entered.connect(show_slot_tooltip.bind(slot))
@@ -1148,6 +1219,27 @@ func select_item(item_id: int) -> void:
 	selected_item_id = item_id
 	rebuild_details()
 
+func on_inventory_item_gui_input(event: InputEvent, item_id: int) -> void:
+	if not (event is InputEventMouseButton) or not event.pressed:
+		return
+	if event.button_index == MOUSE_BUTTON_RIGHT:
+		sell_item(item_id)
+		get_viewport().set_input_as_handled()
+	elif event.button_index == MOUSE_BUTTON_LEFT and event.double_click:
+		equip_inventory_item(item_id)
+		get_viewport().set_input_as_handled()
+
+func equip_inventory_item(item_id: int) -> void:
+	var item := find_item(item_id)
+	if item.is_empty():
+		return
+	selected_item_id = item_id
+	equipped[item.type] = item_id
+	hide_inventory_tooltip()
+	save_game()
+	rebuild_inventory()
+	update_hud()
+
 func rebuild_details() -> void:
 	for child in item_details.get_children():
 		child.queue_free()
@@ -1157,7 +1249,7 @@ func rebuild_details() -> void:
 		item_details.add_child(none)
 		return
 	var name := title_label(item_display_name(item), 19)
-	name.add_theme_color_override("font_color", RARITY_COLOR[item.rarity])
+	name.add_theme_color_override("font_color", rarity_text_color(item.rarity))
 	item_details.add_child(name)
 	var desc := Label.new()
 	desc.text = "Lv.%d   +%d %s   +%d Luck   Sell: %d gold" % [item.level, item.power, item.stat, item.luck, item.sell]
@@ -1192,20 +1284,50 @@ func toggle_equip_selected() -> void:
 	update_hud()
 
 func sell_selected() -> void:
-	var item := find_item(selected_item_id)
+	sell_item(selected_item_id)
+
+func sell_item(item_id: int) -> void:
+	var item := find_item(item_id)
 	if item.is_empty():
 		return
-	if is_item_equipped(selected_item_id):
+	var sold_copy: Dictionary = item.duplicate(true)
+	sold_copy["_was_equipped"] = is_item_equipped(item_id)
+	recently_sold.append(sold_copy)
+	if recently_sold.size() > 5:
+		recently_sold.remove_at(0)
+	if is_item_equipped(item_id):
 		equipped.erase(item.type)
 	gold += int(item.sell)
 	for i in range(inventory.size()):
-		if int(inventory[i].id) == selected_item_id:
+		if int(inventory[i].id) == item_id:
 			inventory.remove_at(i)
 			break
-	selected_item_id = inventory[0].id if not inventory.is_empty() else -1
+	selected_item_id = -1
+	hide_inventory_tooltip()
 	save_game()
 	rebuild_inventory()
 	update_gold_labels()
+	update_hud()
+
+func restore_last_sold() -> void:
+	if recently_sold.is_empty() or inventory.size() >= MAX_INVENTORY:
+		return
+	var restore_cost := int(recently_sold[-1].get("sell", 0))
+	if gold < restore_cost:
+		return
+	var item: Dictionary = recently_sold.pop_back()
+	gold -= restore_cost
+	var was_equipped := bool(item.get("_was_equipped", false))
+	item.erase("_was_equipped")
+	inventory.append(item)
+	if was_equipped and not equipped.has(item.type):
+		equipped[item.type] = int(item.id)
+	selected_item_id = int(item.id)
+	show_toast("Restored %s" % item_display_name(item), rarity_text_color(item.rarity))
+	save_game()
+	rebuild_inventory()
+	update_gold_labels()
+	update_hud()
 
 func open_shop() -> void:
 	if mode == Mode.RUNNING:
@@ -1227,7 +1349,7 @@ func rebuild_shop() -> void:
 	for rarity in RARITIES:
 		var btn := Button.new()
 		btn.text = "%s Crate     %d Gold" % [rarity, CRATE_COST[rarity]]
-		btn.add_theme_color_override("font_color", RARITY_COLOR[rarity])
+		btn.add_theme_color_override("font_color", rarity_text_color(rarity))
 		btn.custom_minimum_size = Vector2(0, 64)
 		btn.disabled = gold < int(CRATE_COST[rarity]) or inventory.size() >= MAX_INVENTORY
 		btn.pressed.connect(buy_crate.bind(rarity))
@@ -1249,6 +1371,8 @@ func close_modal() -> void:
 	shop_screen.visible = false
 	stats_screen.visible = false
 	reset_confirm_screen.visible = false
+	inventory_type_filter_menu.visible = false
+	inventory_rarity_filter_menu.visible = false
 	hide_inventory_tooltip()
 	modal_open = false
 	if mode == Mode.RUNNING:
@@ -1280,7 +1404,10 @@ func show_item_drop(item: Dictionary) -> void:
 	if item_drop_tween != null and item_drop_tween.is_valid():
 		item_drop_tween.kill()
 	item_drop_label.text = "New Item\n%s" % item_display_name(item)
-	item_drop_label.add_theme_color_override("font_color", RARITY_COLOR[item.rarity])
+	var rarity_color: Color = RARITY_COLOR[item.rarity]
+	item_drop_border.color = Color("9fb3c1") if item.rarity == "Common" else rarity_color.darkened(0.28)
+	item_drop_inner.color = rarity_color
+	item_drop_label.add_theme_color_override("font_color", rarity_text_color(item.rarity))
 	item_drop_popup.visible = true
 	item_drop_popup.scale = Vector2(0.9, 0.9)
 	item_drop_popup.modulate.a = 0.0
@@ -1306,6 +1433,7 @@ func save_game() -> void:
 	cfg.set_value("meta", "next_item_id", next_item_id)
 	cfg.set_value("items", "inventory", inventory)
 	cfg.set_value("items", "equipped", equipped)
+	cfg.set_value("items", "recently_sold", recently_sold)
 	cfg.set_value("run", "saved", saved_run)
 	cfg.save(SAVE_PATH)
 
@@ -1326,6 +1454,15 @@ func load_game() -> void:
 			value["element"] = element_name(int(value.level))
 			inventory.append(value)
 	equipped = cfg.get_value("items", "equipped", {})
+	var loaded_recently_sold = cfg.get_value("items", "recently_sold", [])
+	recently_sold.clear()
+	for value in loaded_recently_sold:
+		if value is Dictionary:
+			value["level"] = clampi(int(value.get("level", 1)), 1, MAX_LEVEL)
+			value["element"] = element_name(int(value.level))
+			recently_sold.append(value)
+	while recently_sold.size() > 5:
+		recently_sold.remove_at(0)
 	var loaded_run = cfg.get_value("run", "saved", {})
 	saved_run = loaded_run if loaded_run is Dictionary else {}
 	if not saved_run.is_empty() and int(saved_run.get("level", 1)) > MAX_LEVEL:

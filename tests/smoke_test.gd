@@ -20,6 +20,12 @@ func run_tests() -> void:
 	assert(game.ELEMENTS[1] == "Helium")
 	assert(game.ELEMENTS[117] == "Oganesson")
 	assert(game.inventory_grid.columns == 5)
+	game.toggle_inventory_type_filter_menu()
+	assert(game.inventory_type_filter_menu.visible)
+	game.on_item_type_filter_selected(0)
+	game.toggle_inventory_rarity_filter_menu()
+	assert(game.inventory_rarity_filter_menu.visible)
+	game.on_inventory_rarity_filter_selected(0)
 	assert(game.BACKGROUND_NAMES.size() == 1)
 	assert(not game.hud.has_node("BossName"))
 	assert(game.exit_game_button.text == "Exit Game")
@@ -31,7 +37,9 @@ func run_tests() -> void:
 	assert(game.current_background >= 0 and game.current_background < game.BACKGROUND_NAMES.size())
 
 	game.inventory.clear()
+	game.recently_sold.clear()
 	game.equipped.clear()
+	game.most_damage_one_hit = 0
 	var test_sword := {
 		"id": 900001, "type": "Sword", "rarity": "Legendary", "level": 5,
 		"stat": "Damage", "power": 80, "luck": 7, "sell": 16
@@ -50,6 +58,8 @@ func run_tests() -> void:
 	assert("Rare Beryllium Sword" in game.inventory_tooltip_label.text)
 	assert("Equipped Comparison" in game.inventory_compare_label.text)
 	assert("Legendary Boron Sword" in game.inventory_compare_label.text)
+	assert(game.inventory_tooltip_label.get_theme_color("font_color") == game.INVENTORY_TOOLTIP_TEXT_COLOR)
+	assert(game.inventory_compare_label.get_theme_color("font_color") == game.INVENTORY_TOOLTIP_TEXT_COLOR)
 	game.hide_inventory_tooltip()
 	game.on_item_type_filter_selected(game.TYPES.find("Sword") + 1)
 	game.on_inventory_rarity_filter_selected(game.RARITIES.find("Rare") + 1)
@@ -61,6 +71,34 @@ func run_tests() -> void:
 	game.boss_hp = 999.0
 	game.player_strike()
 	assert(game.most_damage_one_hit == 81)
+	var right_click := InputEventMouseButton.new()
+	right_click.button_index = MOUSE_BUTTON_RIGHT
+	right_click.pressed = true
+	var gold_before_sale: int = game.gold
+	game.on_inventory_item_gui_input(right_click, comparison_sword.id)
+	assert(game.find_item(comparison_sword.id).is_empty())
+	assert(game.recently_sold.size() == 1)
+	game.restore_last_sold()
+	assert(not game.find_item(comparison_sword.id).is_empty())
+	assert(game.recently_sold.is_empty())
+	assert(game.gold == gold_before_sale)
+	var double_click := InputEventMouseButton.new()
+	double_click.button_index = MOUSE_BUTTON_LEFT
+	double_click.pressed = true
+	double_click.double_click = true
+	game.on_inventory_item_gui_input(double_click, comparison_sword.id)
+	assert(int(game.equipped["Sword"]) == int(comparison_sword.id))
+
+	var common_button := Button.new()
+	game.apply_rarity_style(common_button, "Common")
+	assert(common_button.get_theme_stylebox("normal").bg_color == Color("ffffff"))
+	common_button.free()
+	game.recently_sold.clear()
+	for i in range(6):
+		var sold_item: Dictionary = game.create_item("Common", i + 1)
+		game.inventory.append(sold_item)
+		game.sell_item(int(sold_item.id))
+	assert(game.recently_sold.size() == 5)
 
 	var test_armour: Dictionary = game.create_item("Epic", 5)
 	assert(test_armour.power == 40)
@@ -84,6 +122,8 @@ func run_tests() -> void:
 	assert(game.inventory[-1].level == game.highest_level)
 	assert(game.item_drop_popup.visible)
 	assert("New Item" in game.item_drop_label.text)
+	assert(game.item_drop_popup.position == Vector2(340, 90))
+	assert(game.item_drop_inner.color == game.RARITY_COLOR["Epic"])
 
 	game.mode = game.Mode.RUNNING
 	game.level = 37
@@ -128,6 +168,7 @@ func run_tests() -> void:
 	assert(game.highest_level_defeated == 0)
 	assert(game.most_damage_one_hit == 0)
 	assert(game.saved_run.is_empty())
+	assert(game.recently_sold.is_empty())
 
 	print("SMOKE_TEST: PASS")
 	quit(0)
