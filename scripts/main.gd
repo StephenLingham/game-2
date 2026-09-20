@@ -13,6 +13,13 @@ const TYPES := ["Sword", "Breastplate", "Leggings", "Gauntlets", "Helmet", "Ring
 const ARMOUR_TYPES := ["Breastplate", "Leggings", "Gauntlets", "Helmet"]
 const RARITIES := ["Common", "Uncommon", "Rare", "Epic", "Legendary"]
 const RARITY_MULT := {"Common": 1, "Uncommon": 2, "Rare": 4, "Epic": 8, "Legendary": 16}
+# Progression is balanced around a complete seven-slot set. One accessory is
+# expected to roll damage and the other armour, producing a sturdy 2/5 split.
+const BALANCE_DAMAGE_SLOTS := 2
+const BALANCE_ARMOUR_SLOTS := 5
+const PROGRESSION_GEAR_OFFSET := 10
+const FINAL_BOSS_GEAR_OFFSET := 5
+const FULL_REQUIREMENT_LEVEL := 40
 const RARITY_COLOR := {
 	"Common": Color("ffffff"), "Uncommon": Color("32d45e"),
 	"Rare": Color("55a7ff"), "Epic": Color("bd72ff"), "Legendary": Color("ff9f32")
@@ -107,6 +114,11 @@ var equipment_panel: Control
 var inventory_tooltip: ColorRect
 var inventory_tooltip_label: Label
 var inventory_compare_label: Label
+var inventory_action_popup: Control
+var inventory_action_title: Label
+var inventory_action_details: Label
+var inventory_action_equip_button: Button
+var inventory_action_sell_button: Button
 var shop_crates: VBoxContainer
 var overlay_title: Label
 var overlay_body: Label
@@ -576,6 +588,46 @@ func build_inventory() -> Control:
 	inventory_tooltip.add_child(inventory_compare_label)
 	inventory_screen.add_child(inventory_tooltip)
 	inventory_tooltip.visible = false
+	inventory_action_popup = Control.new()
+	full_rect(inventory_action_popup)
+	inventory_action_popup.mouse_filter = Control.MOUSE_FILTER_STOP
+	inventory_action_popup.z_index = 300
+	var action_backdrop := panel_box(Color(0.08, 0.32, 0.50, 0.48), Vector2.ZERO, Vector2(1280, 720))
+	inventory_action_popup.add_child(action_backdrop)
+	var action_border := panel_box(Color("1597d4"), Vector2(425, 160), Vector2(430, 400))
+	inventory_action_popup.add_child(action_border)
+	var action_panel := panel_box(Color("fff9c4"), Vector2(5, 5), Vector2(420, 390))
+	action_border.add_child(action_panel)
+	inventory_action_title = title_label("Item Actions", 25)
+	inventory_action_title.position = Vector2(20, 18)
+	inventory_action_title.size = Vector2(380, 36)
+	action_panel.add_child(inventory_action_title)
+	inventory_action_details = Label.new()
+	inventory_action_details.position = Vector2(24, 66)
+	inventory_action_details.size = Vector2(372, 120)
+	inventory_action_details.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	inventory_action_details.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	inventory_action_details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inventory_action_details.add_theme_font_size_override("font_size", 16)
+	action_panel.add_child(inventory_action_details)
+	inventory_action_equip_button = Button.new()
+	inventory_action_equip_button.position = Vector2(24, 204)
+	inventory_action_equip_button.size = Vector2(372, 50)
+	inventory_action_equip_button.pressed.connect(confirm_inventory_equip_action)
+	action_panel.add_child(inventory_action_equip_button)
+	inventory_action_sell_button = Button.new()
+	inventory_action_sell_button.position = Vector2(24, 264)
+	inventory_action_sell_button.size = Vector2(372, 50)
+	inventory_action_sell_button.pressed.connect(confirm_inventory_sell_action)
+	action_panel.add_child(inventory_action_sell_button)
+	var action_cancel_button := Button.new()
+	action_cancel_button.text = "Cancel"
+	action_cancel_button.position = Vector2(24, 324)
+	action_cancel_button.size = Vector2(372, 50)
+	action_cancel_button.pressed.connect(hide_inventory_item_actions)
+	action_panel.add_child(action_cancel_button)
+	inventory_screen.add_child(inventory_action_popup)
+	inventory_action_popup.visible = false
 	inventory_screen.visible = false
 	return inventory_screen
 
@@ -717,7 +769,9 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-		if pause_screen.visible:
+		if inventory_action_popup != null and inventory_action_popup.visible:
+			hide_inventory_item_actions()
+		elif pause_screen.visible:
 			close_pause_menu()
 		elif inventory_screen.visible or shop_screen.visible or stats_screen.visible or reset_confirm_screen.visible:
 			close_modal()
@@ -744,8 +798,7 @@ func spawn_level() -> void:
 		return
 	player_max_hp = 100.0
 	player_hp = player_max_hp
-	# A starter can clear the first few floors; later levels demand equipment.
-	boss_max_hp = round(18.0 + 2.0 * level + 0.35 * pow(level, 1.5))
+	boss_max_hp = boss_health_for_level(level)
 	boss_hp = boss_max_hp
 	level_time = 30.0
 	player_attack_clock = 0.35
@@ -780,7 +833,7 @@ func player_strike() -> void:
 func boss_strike() -> void:
 	if player_hp <= 0.0 or boss_hp <= 0.0:
 		return
-	var raw_damage := 1.5 + level * 0.35
+	var raw_damage := boss_damage_for_level(level)
 	var mitigated := raw_damage * (100.0 / (100.0 + get_armour() * 5.0))
 	var damage := maxi(1, roundi(mitigated))
 	player_hp = maxf(0.0, player_hp - damage)
@@ -982,6 +1035,50 @@ func get_luck() -> int:
 		total += int(item.get("luck", 0))
 	return total
 
+func difficulty_progress(for_level: int) -> float:
+	var linear := float(clampi(for_level, 1, MAX_LEVEL) - 1) / float(MAX_LEVEL - 1)
+	return linear * linear * (3.0 - 2.0 * linear)
+
+func progression_target_gear_level(for_level: int) -> int:
+	var offset := FINAL_BOSS_GEAR_OFFSET if for_level >= MAX_LEVEL else PROGRESSION_GEAR_OFFSET
+	return maxi(0, clampi(for_level, 1, MAX_LEVEL) - offset)
+
+func progression_target_rarity_multiplier(for_level: int) -> int:
+	return int(RARITY_MULT["Legendary"] if for_level >= MAX_LEVEL else RARITY_MULT["Epic"])
+
+func benchmark_damage(for_level: int) -> int:
+	var gear_level := progression_target_gear_level(for_level)
+	var rarity_multiplier := progression_target_rarity_multiplier(for_level)
+	return 1 + BALANCE_DAMAGE_SLOTS * gear_level * rarity_multiplier
+
+func benchmark_armour(for_level: int) -> int:
+	var gear_level := progression_target_gear_level(for_level)
+	var rarity_multiplier := progression_target_rarity_multiplier(for_level)
+	return BALANCE_ARMOUR_SLOTS * gear_level * rarity_multiplier
+
+func required_benchmark_hits(for_level: int) -> float:
+	if for_level >= MAX_LEVEL:
+		# A correctly geared final build only has about a third of a second of
+		# damage margin across the thirty-second fight.
+		return 29.65
+	var early_linear := clampf(float(maxi(1, for_level) - 1) / float(FULL_REQUIREMENT_LEVEL - 1), 0.0, 1.0)
+	var early_ease := early_linear * early_linear * (3.0 - 2.0 * early_linear)
+	# The opening is forgiving. From level 40 onward, the epic level-10
+	# benchmark needs nearly the entire timer, tightening further near the end.
+	return lerpf(7.0, 28.0, early_ease) + 1.2 * difficulty_progress(for_level)
+
+func boss_health_for_level(for_level: int) -> float:
+	return round(float(benchmark_damage(for_level)) * required_benchmark_hits(for_level))
+
+func boss_damage_for_level(for_level: int) -> float:
+	var target_armour := float(benchmark_armour(for_level))
+	# Target builds take one damage early, two through the middle, and three
+	# near the end. Falling behind the armour curve becomes rapidly lethal.
+	var intended_damage := lerpf(1.0, 3.35, difficulty_progress(for_level))
+	if for_level >= MAX_LEVEL:
+		intended_damage = 3.45
+	return intended_damage * (100.0 + target_armour * 5.0) / 100.0
+
 func equipped_items() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for slot in equipped:
@@ -1040,6 +1137,7 @@ func open_inventory() -> void:
 	inventory_screen.visible = true
 	inventory_type_filter_menu.visible = false
 	inventory_rarity_filter_menu.visible = false
+	hide_inventory_item_actions()
 	selected_item_id = inventory[0].id if not inventory.is_empty() else -1
 	rebuild_inventory()
 
@@ -1058,10 +1156,14 @@ func filtered_inventory_items() -> Array[Dictionary]:
 func toggle_inventory_type_filter_menu() -> void:
 	inventory_type_filter_menu.visible = not inventory_type_filter_menu.visible
 	inventory_rarity_filter_menu.visible = false
+	if inventory_type_filter_menu.visible:
+		inventory_type_filter_menu.move_to_front()
 
 func toggle_inventory_rarity_filter_menu() -> void:
 	inventory_rarity_filter_menu.visible = not inventory_rarity_filter_menu.visible
 	inventory_type_filter_menu.visible = false
+	if inventory_rarity_filter_menu.visible:
+		inventory_rarity_filter_menu.move_to_front()
 
 func on_item_type_filter_selected(index: int) -> void:
 	inventory_type_filter = "All" if index == 0 else TYPES[index - 1]
@@ -1103,6 +1205,7 @@ func rebuild_inventory() -> void:
 		)
 		for item in sorted:
 			var btn := Button.new()
+			btn.set_meta("inventory_item_id", int(item.id))
 			var equipped_mark := "\nEquipped" if is_item_equipped(int(item.id)) else ""
 			btn.text = "%s\n%s %s\nLv.%d%s" % [item.rarity, str(item.get("element", element_name(int(item.level)))), item.type, item.level, equipped_mark]
 			btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1111,7 +1214,7 @@ func rebuild_inventory() -> void:
 			btn.custom_minimum_size = Vector2(162, 162)
 			btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			apply_rarity_style(btn, item.rarity, is_item_equipped(int(item.id)))
-			btn.pressed.connect(select_item.bind(int(item.id)))
+			btn.pressed.connect(show_inventory_item_actions.bind(int(item.id)))
 			btn.gui_input.connect(on_inventory_item_gui_input.bind(int(item.id)))
 			btn.mouse_entered.connect(show_item_tooltip.bind(item))
 			btn.mouse_exited.connect(hide_inventory_tooltip)
@@ -1225,11 +1328,42 @@ func on_inventory_item_gui_input(event: InputEvent, item_id: int) -> void:
 	if not (event is InputEventMouseButton) or not event.pressed:
 		return
 	if event.button_index == MOUSE_BUTTON_RIGHT:
-		sell_item(item_id)
+		show_inventory_item_actions(item_id)
 		get_viewport().set_input_as_handled()
-	elif event.button_index == MOUSE_BUTTON_LEFT and event.double_click:
-		equip_inventory_item(item_id)
-		get_viewport().set_input_as_handled()
+
+func show_inventory_item_actions(item_id: int) -> void:
+	var item := find_item(item_id)
+	if item.is_empty():
+		return
+	selected_item_id = item_id
+	rebuild_details()
+	hide_inventory_tooltip()
+	inventory_type_filter_menu.visible = false
+	inventory_rarity_filter_menu.visible = false
+	inventory_action_title.text = item_display_name(item)
+	inventory_action_title.add_theme_color_override("font_color", rarity_text_color(item.rarity))
+	inventory_action_details.text = "Item Level %d\n+%d %s   +%d Luck\nSell value: %d gold" % [item.level, item.power, item.stat, item.luck, item.sell]
+	inventory_action_equip_button.text = "Unequip" if is_item_equipped(item_id) else "Equip"
+	inventory_action_sell_button.text = "Sell for %d Gold" % int(item.sell)
+	inventory_action_popup.visible = true
+	inventory_action_popup.move_to_front()
+
+func hide_inventory_item_actions() -> void:
+	if inventory_action_popup != null:
+		inventory_action_popup.visible = false
+
+func confirm_inventory_equip_action() -> void:
+	if inventory_action_popup == null or not inventory_action_popup.visible:
+		return
+	hide_inventory_item_actions()
+	toggle_equip_selected()
+
+func confirm_inventory_sell_action() -> void:
+	if inventory_action_popup == null or not inventory_action_popup.visible:
+		return
+	var item_id := selected_item_id
+	hide_inventory_item_actions()
+	sell_item(item_id)
 
 func equip_inventory_item(item_id: int) -> void:
 	var item := find_item(item_id)
@@ -1375,6 +1509,7 @@ func close_modal() -> void:
 	reset_confirm_screen.visible = false
 	inventory_type_filter_menu.visible = false
 	inventory_rarity_filter_menu.visible = false
+	hide_inventory_item_actions()
 	hide_inventory_tooltip()
 	modal_open = false
 	if mode == Mode.RUNNING:

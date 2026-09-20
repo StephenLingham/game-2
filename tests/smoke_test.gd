@@ -19,12 +19,33 @@ func run_tests() -> void:
 	assert(game.ELEMENTS[0] == "Hydrogen")
 	assert(game.ELEMENTS[1] == "Helium")
 	assert(game.ELEMENTS[117] == "Oganesson")
+	assert(game.progression_target_gear_level(60) == 50)
+	assert(game.progression_target_rarity_multiplier(60) == game.RARITY_MULT["Epic"])
+	assert(game.progression_target_gear_level(118) == 113)
+	assert(game.progression_target_rarity_multiplier(118) == game.RARITY_MULT["Legendary"])
+	var level_60_benchmark_damage: int = 1 + game.BALANCE_DAMAGE_SLOTS * 50 * game.RARITY_MULT["Epic"]
+	var final_benchmark_damage: int = 1 + game.BALANCE_DAMAGE_SLOTS * 113 * game.RARITY_MULT["Legendary"]
+	assert(ceili(game.boss_health_for_level(60) / level_60_benchmark_damage) == 29)
+	assert(ceili(game.boss_health_for_level(118) / final_benchmark_damage) == 30)
+	assert(game.boss_health_for_level(118) > final_benchmark_damage * 29.0)
+	var obsolete_final_epic_damage: int = 1 + game.BALANCE_DAMAGE_SLOTS * 108 * game.RARITY_MULT["Epic"]
+	assert(game.boss_health_for_level(118) > obsolete_final_epic_damage * 30.0)
+	var final_benchmark_armour: int = game.BALANCE_ARMOUR_SLOTS * 113 * game.RARITY_MULT["Legendary"]
+	var final_benchmark_damage_taken: float = game.boss_damage_for_level(118) * 100.0 / (100.0 + final_benchmark_armour * 5.0)
+	assert(final_benchmark_damage_taken > 3.0 and final_benchmark_damage_taken < 3.5)
+	var obsolete_final_epic_armour: int = game.BALANCE_ARMOUR_SLOTS * 108 * game.RARITY_MULT["Epic"]
+	var obsolete_epic_damage_taken: float = game.boss_damage_for_level(118) * 100.0 / (100.0 + obsolete_final_epic_armour * 5.0)
+	assert(obsolete_epic_damage_taken > 7.0)
+	assert(game.required_benchmark_hits(10) < game.required_benchmark_hits(60))
+	assert(game.required_benchmark_hits(60) < game.required_benchmark_hits(117))
 	assert(game.inventory_grid.columns == 4)
 	game.toggle_inventory_type_filter_menu()
 	assert(game.inventory_type_filter_menu.visible)
+	assert(game.inventory_type_filter_menu.get_index() == game.inventory_screen.get_child_count() - 1)
 	game.on_item_type_filter_selected(0)
 	game.toggle_inventory_rarity_filter_menu()
 	assert(game.inventory_rarity_filter_menu.visible)
+	assert(game.inventory_rarity_filter_menu.get_index() == game.inventory_screen.get_child_count() - 1)
 	game.on_inventory_rarity_filter_selected(0)
 	assert(game.BACKGROUND_NAMES.size() == 1)
 	assert(not game.hud.has_node("BossName"))
@@ -72,25 +93,50 @@ func run_tests() -> void:
 	assert(filtered_items[0].id == comparison_sword.id)
 	game.on_item_type_filter_selected(0)
 	game.on_inventory_rarity_filter_selected(0)
+	var comparison_button: Button
+	for inventory_button in game.inventory_grid.get_children():
+		if inventory_button.has_meta("inventory_item_id") and int(inventory_button.get_meta("inventory_item_id")) == int(comparison_sword.id):
+			comparison_button = inventory_button
+			break
+	assert(comparison_button != null)
+	comparison_button.pressed.emit()
+	assert(game.inventory_action_popup.visible)
+	assert(game.selected_item_id == comparison_sword.id)
+	game.hide_inventory_item_actions()
 	game.boss_hp = 999.0
 	game.player_strike()
 	assert(game.most_damage_one_hit == 81)
-	var right_click := InputEventMouseButton.new()
-	right_click.button_index = MOUSE_BUTTON_RIGHT
-	right_click.pressed = true
+	game.show_inventory_item_actions(comparison_sword.id)
+	assert(game.inventory_action_popup.visible)
+	assert(game.selected_item_id == comparison_sword.id)
+	assert(game.inventory_action_equip_button.text == "Equip")
+	assert(game.inventory_action_sell_button.text == "Sell for 4 Gold")
+	game.hide_inventory_item_actions()
+	assert(not game.inventory_action_popup.visible)
+	game.show_inventory_item_actions(comparison_sword.id)
+	game.confirm_inventory_equip_action()
+	assert(not game.inventory_action_popup.visible)
+	assert(int(game.equipped["Sword"]) == int(comparison_sword.id))
+	game.show_inventory_item_actions(comparison_sword.id)
+	assert(game.inventory_action_equip_button.text == "Unequip")
 	var gold_before_sale: int = game.gold
-	game.on_inventory_item_gui_input(right_click, comparison_sword.id)
+	game.confirm_inventory_sell_action()
+	assert(not game.inventory_action_popup.visible)
 	assert(game.find_item(comparison_sword.id).is_empty())
 	assert(game.recently_sold.size() == 1)
 	game.restore_last_sold()
 	assert(not game.find_item(comparison_sword.id).is_empty())
 	assert(game.recently_sold.is_empty())
 	assert(game.gold == gold_before_sale)
-	var double_click := InputEventMouseButton.new()
-	double_click.button_index = MOUSE_BUTTON_LEFT
-	double_click.pressed = true
-	double_click.double_click = true
-	game.on_inventory_item_gui_input(double_click, comparison_sword.id)
+	assert(int(game.equipped["Sword"]) == int(comparison_sword.id))
+	game.show_inventory_item_actions(comparison_sword.id)
+	assert(game.inventory_action_popup.visible)
+	assert(game.inventory_action_equip_button.text == "Unequip")
+	game.confirm_inventory_equip_action()
+	assert(not game.equipped.has("Sword"))
+	game.show_inventory_item_actions(comparison_sword.id)
+	assert(game.inventory_action_equip_button.text == "Equip")
+	game.confirm_inventory_equip_action()
 	assert(int(game.equipped["Sword"]) == int(comparison_sword.id))
 
 	var common_button := Button.new()
