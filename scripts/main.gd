@@ -1214,7 +1214,7 @@ func rebuild_inventory() -> void:
 			btn.custom_minimum_size = Vector2(162, 162)
 			btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			apply_rarity_style(btn, item.rarity, is_item_equipped(int(item.id)))
-			btn.pressed.connect(show_inventory_item_actions.bind(int(item.id)))
+			btn.pressed.connect(equip_inventory_item.bind(int(item.id)))
 			btn.gui_input.connect(on_inventory_item_gui_input.bind(int(item.id)))
 			btn.mouse_entered.connect(show_item_tooltip.bind(item))
 			btn.mouse_exited.connect(hide_inventory_tooltip)
@@ -1328,7 +1328,7 @@ func on_inventory_item_gui_input(event: InputEvent, item_id: int) -> void:
 	if not (event is InputEventMouseButton) or not event.pressed:
 		return
 	if event.button_index == MOUSE_BUTTON_RIGHT:
-		show_inventory_item_actions(item_id)
+		sell_item(item_id)
 		get_viewport().set_input_as_handled()
 
 func show_inventory_item_actions(item_id: int) -> void:

@@ -100,9 +100,23 @@ func run_tests() -> void:
 			break
 	assert(comparison_button != null)
 	comparison_button.pressed.emit()
-	assert(game.inventory_action_popup.visible)
+	assert(int(game.equipped["Sword"]) == int(comparison_sword.id))
 	assert(game.selected_item_id == comparison_sword.id)
-	game.hide_inventory_item_actions()
+	assert(not game.inventory_action_popup.visible)
+	var gold_before_right_click_sale: int = game.gold
+	var right_click := InputEventMouseButton.new()
+	right_click.button_index = MOUSE_BUTTON_RIGHT
+	right_click.pressed = true
+	game.on_inventory_item_gui_input(right_click, comparison_sword.id)
+	assert(game.find_item(comparison_sword.id).is_empty())
+	assert(game.gold == gold_before_right_click_sale + int(comparison_sword.sell))
+	assert(game.recently_sold.size() == 1)
+	game.restore_last_sold()
+	assert(not game.find_item(comparison_sword.id).is_empty())
+	assert(game.recently_sold.is_empty())
+	assert(game.gold == gold_before_right_click_sale)
+	assert(int(game.equipped["Sword"]) == int(comparison_sword.id))
+	game.equipped["Sword"] = test_sword.id
 	game.boss_hp = 999.0
 	game.player_strike()
 	assert(game.most_damage_one_hit == 81)
